@@ -182,7 +182,7 @@ function Row({ r, owner, categories, trips, reviewMode, aiEnabled, onSave, onApp
           </select>
           {cat?.subs.length > 0 && (
             <select value={r.subcategory ?? ""} onChange={(e) => onSave({ category: r.category, subcategory: e.target.value })}
-              className="w-28 rounded-md border border-grid bg-surface px-2 py-1 text-ink-2" aria-label="תת־קטגוריה">
+              className={`w-28 rounded-md border bg-surface px-2 py-1 text-ink-2 ${r.subcategory ? "border-grid" : "border-series-2"}`} aria-label="תת־קטגוריה">
               <option value="">—</option>
               {cat.subs.map((s) => <option key={s}>{s}</option>)}
             </select>
@@ -238,7 +238,7 @@ function FilterBar({ meta, month, filters, setFilter, onFilters, q, setQ, count,
     <div className="card grid gap-3 p-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h2 className="text-lg font-bold">
-          {filters.category === "__none" ? "לא מסווג" : filters.category ?? "כל העסקאות"}
+          {filters.category === "__none" ? "לא מסווג" : filters.category ?? (filters.incomplete === "1" ? "עסקאות שלא סווגו עד הסוף" : "כל העסקאות")}
           {filters.sub && <span className="text-ink-2"> › {filters.sub === "__none" ? "ללא תת־קטגוריה" : filters.sub}</span>}
         </h2>
         <span className="text-sm text-ink-2">{trip ? trip.name : monthLabel(month)}</span>
@@ -251,6 +251,15 @@ function FilterBar({ meta, month, filters, setFilter, onFilters, q, setQ, count,
           <input value={q} onChange={(e) => setQ(e.target.value)} onBlur={() => q !== (filters.q ?? "") && setFilter({ q: q || undefined })}
             placeholder="חיפוש עסק או הערה (Enter)" className={`w-56 ${sel}`} />
         </form>
+        <button type="button" role="switch" aria-checked={filters.incomplete === "1"}
+          onClick={() => setFilter({ incomplete: filters.incomplete === "1" ? undefined : "1" })}
+          title="בלי קטגוריה, או בקטגוריה שיש לה תתי־קטגוריות ולא נבחרה אחת"
+          className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm ${filters.incomplete === "1" ? "border-series-2 bg-series-2/10 text-ink" : "border-grid bg-surface text-ink-2"}`}>
+          <span className={`relative inline-block h-4 w-7 rounded-full transition-colors ${filters.incomplete === "1" ? "bg-series-2" : "bg-axis"}`}>
+            <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${filters.incomplete === "1" ? "left-0.5" : "left-3.5"}`} />
+          </span>
+          לא מסווגות בלבד
+        </button>
         <select value={filters.category ?? ""} onChange={(e) => setFilter({ category: e.target.value || undefined, sub: undefined })} className={sel} aria-label="קטגוריה">
           <option value="">כל הקטגוריות</option>
           {meta.categories.map((c) => <option key={c.name}>{c.name}</option>)}

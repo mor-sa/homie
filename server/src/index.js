@@ -134,6 +134,11 @@ app.get("/api/transactions", wrap((req) => {
   else if (f.sub) (where.push("subcategory = ?"), params.push(f.sub));
   if (f.trip) (where.push("trip_id = ?"), params.push(Number(f.trip)));
   if (f.notrips === "1") where.push("trip_id IS NULL");
+  // not fully categorized: no category, or a category that has sub-categories but none chosen
+  if (f.incomplete === "1") {
+    where.push(`status = 'posted' AND (category IS NULL OR (subcategory IS NULL AND EXISTS
+      (SELECT 1 FROM subcategories s WHERE s.category = transactions.category)))`);
+  }
   if (f.card) (where.push("card = ?"), params.push(f.card));
   if (f.fixed === "1") where.push("is_fixed = 1");
   if (f.weekday) (where.push("CAST(strftime('%w', purchase_date) AS INTEGER) = ? AND trip_id IS NULL AND is_fixed = 0"), params.push(Number(f.weekday)));
