@@ -1,0 +1,21 @@
+{
+  "name": "home-expenses-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "node --watch --env-file-if-exists=.env src/index.js",
+    "start": "node --env-file-if-exists=.env src/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.7.0",
+    "express": "^5.3.0",
+    "fflate": "^0.8.3",
+    "multer": "^2.5.0"
+  }
+}

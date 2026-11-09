@@ -1,0 +1,102 @@
+import { useCallback, useEffect, useState } from "react";
+import { api, monthLabel } from "./api.js";
+import Dashboard from "./pages/Dashboard.jsx";
+import Transactions from "./pages/Transactions.jsx";
+import Import from "./pages/Import.jsx";
+import Trips from "./pages/Trips.jsx";
+import Settings from "./pages/Settings.jsx";
+
+const TABS = [
+  { id: "dashboard", label: "סקירה" },
+  { id: "trips", label: "טיולים" },
+  { id: "review", label: "לאישור" },
+  { id: "transactions", label: "עסקאות" },
+  { id: "import", label: "ייבוא" },
+  { id: "settings", label: "הגדרות" },
+];
+
+// #tab/param: param is a month (YYYY-MM), a year (YYYY) or a trip id
+const readHash = () => {
+  const [tab, param] = decodeURIComponent(location.hash.slice(1)).split("/");
+  return { tab: TABS.some((t) => t.id === tab) ? tab : "dashboard", param };
+};
+
+export default function App() {
+  const [{ tab, param }, setRoute] = useState(readHash);
+  const [meta, setMeta] = useState(null);
+  const [reviewCount, setReviewCount] = useState(0);
+
+  const refreshMeta = useCallback(async () => {
+    const m = await api.meta();
+    setMeta(m);
+    const r = await api.transactions({ review: "1" });
+    setReviewCount(r.length);
+  }, []);
+
+  useEffect(() => {
+    refreshMeta();
+    const onHash = () => setRoute(readHash());
+    addEventListener("hashchange", onHash);
+    return () => removeEventListener("hashchange", onHash);
+  }, [refreshMeta]);
+
+  if (!meta) return <div className="p-8 text-muted">טוען…</div>;
+
+  const isPeriod = (p) => /^\d{4}(-\d{2})?$/.test(p ?? "");
+  const period = isPeriod(param) ? param : meta.defaultMonth;
+  const go = (t, p) => (location.hash = `${t}/${p ?? (t === "dashboard" || t === "transactions" ? period : "")}`);
+  const showPeriod = tab === "dashboard" || tab === "transactions";
+
+  return (
+    <div className="min-h-screen">
+      <header className="sticky top-0 z-20 border-b border-grid bg-surface/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+          <h1 className="text-lg font-bold">הוצאות הבית</h1>
+          <nav className="flex max-w-full gap-1 overflow-x-auto">
+            {TABS.map((t) => (
+              <button key={t.id} onClick={() => go(t.id)}
+                className={`relative whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium ${tab === t.id ? "bg-ink text-surface" : "text-ink-2 hover:bg-grid/60"}`}>
+                {t.label}
+                {t.id === "review" && reviewCount > 0 && (
+                  <span className="num ms-1.5 rounded-full bg-series-2 px-1.5 text-xs text-white">{reviewCount}</span>
+                )}
+              </button>
+            ))}
+          </nav>
+          {showPeriod && meta.months.length > 0 && (
+            <select value={period} onChange={(e) => go(tab, e.target.value)}
+              className="ms-auto rounded-lg border border-grid bg-surface px-3 py-1.5 text-sm" aria-label="תקופה">
+              <optgroup label="חודשים">
+                {meta.months.map((m) => <option key={m.month} value={m.month}>{monthLabel(m.month)}</option>)}
+              </optgroup>
+              <optgroup label="שנים">
+                {meta.years.map((y) => <option key={y.year} value={y.year}>{monthLabel(y.year)}</option>)}
+              </optgroup>
+            </select>
+          )}
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-4 py-6">
+        {meta.months.length === 0 && !["import", "settings"].includes(tab) ? (
+          <div className="card p-8 text-center">
+            <p className="mb-4 text-ink-2">עוד אין נתונים. התחילו בייבוא קובץ ההוצאות מגוגל שיטס ואז פירוט עסקאות מחברת האשראי.</p>
+            <button onClick={() => go("import")} className="rounded-lg bg-ink px-4 py-2 text-surface">לייבוא</button>
+          </div>
+        ) : tab === "dashboard" ? (
+          <Dashboard key={period} month={period} onGo={go} />
+        ) : tab === "trips" ? (
+          <Trips meta={meta} tripId={param} onGo={go} onChanged={refreshMeta} />
+        ) : tab === "review" ? (
+          <Transactions key="review" meta={meta} reviewMode onChanged={refreshMeta} />
+        ) : tab === "transactions" ? (
+          <Transactions key={period} meta={meta} month={period} onChanged={refreshMeta} />
+        ) : tab === "import" ? (
+          <Import meta={meta} onImported={refreshMeta} onGo={go} />
+        ) : (
+          <Settings meta={meta} onChanged={refreshMeta} />
+        )}
+      </main>
+    </div>
+  );
+}
