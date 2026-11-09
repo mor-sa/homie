@@ -4,12 +4,57 @@ import { Swatch } from "../components/charts.jsx";
 
 const SOURCE = { rule: "לפי עסק", trip: "טיול", ai: "הצעת AI", web: "חיפוש ברשת", manual: "ידני", history: "מהגיליון" };
 
+// ---- sorting (client side; the list is at most a few hundred rows) ----
+const DEFAULT_SORT = { key: "date", dir: "desc" };
+const collator = new Intl.Collator("he", { sensitivity: "base", numeric: true });
+// first click: newest / largest first for date and amount, א→ת for text
+const FIRST_DIR = { date: "desc", amount: "desc", merchant: "asc", card: "asc", category: "asc" };
+
+function sortRows(rows, { key, dir }, owners) {
+  const val = {
+    date: (r) => r.purchase_date + String(r.id).padStart(8, "0"),
+    amount: (r) => r.amount ?? 0,
+    merchant: (r) => r.merchant,
+    card: (r) => owners[r.card] ?? r.card ?? "",
+    category: (r) => (r.category ? r.category + " " + (r.subcategory ?? "") : "\uffff"), // uncategorized last
+  }[key];
+  const cmp = (a, b) => {
+    const [x, y] = [val(a), val(b)];
+    return typeof x === "number" ? x - y : collator.compare(x, y);
+  };
+  // pending rows (no amount yet) always go last, whatever the direction
+  const last = (r) => (key === "amount" && r.amount == null ? 1 : 0);
+  return [...rows].sort((a, b) =>
+    last(a) - last(b) || (dir === "asc" ? cmp(a, b) : cmp(b, a)) || b.purchase_date.localeCompare(a.purchase_date));
+}
+
+function SortTh({ k, sort, setSort, end, children }) {
+  const active = sort.key === k;
+  const next = active ? { key: k, dir: sort.dir === "asc" ? "desc" : "asc" } : { key: k, dir: FIRST_DIR[k] };
+  return (
+    <th className={end ? "!text-end" : ""} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button type="button" onClick={() => setSort(next)}
+        className={`inline-flex items-center gap-1 hover:text-ink ${active ? "font-semibold text-ink" : ""}`}>
+        {children}
+        <span aria-hidden className={active ? "" : "opacity-30"}>{active && sort.dir === "asc" ? "▲" : "▼"}</span>
+      </button>
+    </th>
+  );
+}
+
 const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 
 export default function Transactions({ meta, month, filters = {}, onFilters, reviewMode = false, onChanged }) {
   const [rows, setRows] = useState(null);
   const [q, setQ] = useState(filters.q ?? "");
   const [toast, setToast] = useState(null);
+  const [sort, setSortState] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("tx.sort")) ?? DEFAULT_SORT; } catch { return DEFAULT_SORT; }
+  });
+  const setSort = (v) => {
+    setSortState(v);
+    try { localStorage.setItem("tx.sort", JSON.stringify(v)); } catch { /* private mode */ }
+  };
   const owners = useMemo(() => Object.fromEntries(meta.cards.map((c) => [c.last4, c.owner])), [meta.cards]);
   const setFilter = (patch) => onFilters({ ...filters, ...patch });
 
@@ -66,6 +111,7 @@ export default function Transactions({ meta, month, filters = {}, onFilters, rev
   if (!rows) return <p className="text-muted">טוען…</p>;
 
   const total = rows.filter((r) => r.status === "posted").reduce((a, r) => a + (r.amount ?? 0), 0);
+  const sorted = sortRows(rows, sort, owners);
   const withSuggestion = rows.filter((r) => r.category).length;
 
   return (
@@ -109,11 +155,11 @@ export default function Transactions({ meta, month, filters = {}, onFilters, rev
           <table className="w-full min-w-[900px] text-sm">
             <thead className="border-b border-grid text-xs text-muted">
               <tr className="[&>th]:px-3 [&>th]:py-2 [&>th]:text-start [&>th]:font-medium">
-                <th>תאריך</th>
-                <th>עסק</th>
-                <th className="!text-end">סכום</th>
-                <th>כרטיס</th>
-                <th>קטגוריה</th>
+                <SortTh k="date" sort={sort} setSort={setSort}>תאריך</SortTh>
+                <SortTh k="merchant" sort={sort} setSort={setSort}>עסק</SortTh>
+                <SortTh k="amount" sort={sort} setSort={setSort} end>סכום</SortTh>
+                <SortTh k="card" sort={sort} setSort={setSort}>כרטיס</SortTh>
+                <SortTh k="category" sort={sort} setSort={setSort}>קטגוריה</SortTh>
                 <th>טיול</th>
                 <th>קבועה</th>
                 <th>הערה</th>
@@ -121,7 +167,7 @@ export default function Transactions({ meta, month, filters = {}, onFilters, rev
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {sorted.map((r) => (
                 <Row key={r.id} r={r} owner={owners[r.card] ?? r.card} categories={meta.categories} trips={meta.trips}
                   reviewMode={reviewMode} aiEnabled={meta.aiEnabled} onSave={(p) => save(r, p)}
                   onResearch={async () => {

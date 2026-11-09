@@ -34,8 +34,12 @@ export const api = {
   setCardOwner: (last4, owner) => req(`/cards/${last4}`, json("PUT", { owner })),
 };
 
-export const ils = (n, digits = 0) =>
-  "₪" + Number(n ?? 0).toLocaleString("he-IL", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+// "-₪1,234" for refunds (not "₪-1,234"); toLocaleString on the absolute value avoids bidi marks in the sign
+export const ils = (n, digits = 0) => {
+  const v = Number(n ?? 0);
+  const body = Math.abs(v).toLocaleString("he-IL", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return (v < 0 && body.replace(/[0.,]/g, "") ? "-" : "") + "₪" + body;
+};
 
 const MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
 export const monthLabel = (m, short = false) => {
