@@ -124,10 +124,19 @@ app.delete("/api/categories/:name/subs/:sub", wrap((req) => tx(() => {
 app.get("/api/transactions", wrap((req) => {
   const where = [];
   const params = [];
-  if (req.query.month) (where.push("purchase_date LIKE ? || '%'"), params.push(req.query.month));
-  if (req.query.review === "1") where.push("needs_review = 1 AND status = 'posted'");
-  if (req.query.category) (where.push("category = ?"), params.push(req.query.category));
-  if (req.query.trip) (where.push("trip_id = ?"), params.push(Number(req.query.trip)));
+  const f = req.query;
+  // a trip spans its own dates (and pre-paid bookings), so it replaces the period filter
+  if (f.month && !f.trip) (where.push("purchase_date LIKE ? || '%'"), params.push(f.month));
+  if (f.review === "1") where.push("needs_review = 1 AND status = 'posted'");
+  if (f.category === "__none") where.push("category IS NULL");
+  else if (f.category) (where.push("category = ?"), params.push(f.category));
+  if (f.sub === "__none") where.push("subcategory IS NULL");
+  else if (f.sub) (where.push("subcategory = ?"), params.push(f.sub));
+  if (f.trip) (where.push("trip_id = ?"), params.push(Number(f.trip)));
+  if (f.notrips === "1") where.push("trip_id IS NULL");
+  if (f.card) (where.push("card = ?"), params.push(f.card));
+  if (f.fixed === "1") where.push("is_fixed = 1");
+  if (f.weekday) (where.push("CAST(strftime('%w', purchase_date) AS INTEGER) = ? AND trip_id IS NULL AND is_fixed = 0"), params.push(Number(f.weekday)));
   if (req.query.q) (where.push("(merchant LIKE '%' || ? || '%' OR note LIKE '%' || ? || '%')"), params.push(req.query.q, req.query.q));
   return db
     .prepare(`SELECT * FROM transactions ${where.length ? "WHERE " + where.join(" AND ") : ""}

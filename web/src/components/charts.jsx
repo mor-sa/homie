@@ -14,7 +14,10 @@ export function Swatch({ color, size = 10 }) {
  * (`compareKey`) draws a thin gray bar under each for e.g. the previous month.
  * Clicking a category with sub-categories expands them.
  */
-export function CategoryBars({ rows, compareKey, compareLabel, total }) {
+// onPick(category, sub?) opens the matching transactions; "לא מסווג" is passed as "__none"
+const pickKey = (c) => (c === "לא מסווג" ? "__none" : c);
+
+export function CategoryBars({ rows, compareKey, compareLabel, total, onPick }) {
   const [open, setOpen] = useState(null);
   const max = Math.max(...rows.map((r) => Math.max(r.total, compareKey ? r[compareKey] : 0)), 1);
   return (
@@ -24,11 +27,12 @@ export function CategoryBars({ rows, compareKey, compareLabel, total }) {
         const diff = cmp ? r.total / cmp - 1 : null;
         const expandable = r.subs?.length > 0;
         return (
-          <li key={r.category}>
+          <li key={r.category} className="flex items-center gap-1">
+            <div className="min-w-0 flex-1">
             <button
               type="button"
-              onClick={() => expandable && setOpen(open === r.category ? null : r.category)}
-              className={`group grid w-full grid-cols-[7.5rem_1fr_6rem] items-center gap-2 rounded-md px-1 py-1 text-start text-sm ${expandable ? "hover:bg-grid/40" : "cursor-default"}`}
+              onClick={() => (expandable ? setOpen(open === r.category ? null : r.category) : onPick?.(pickKey(r.category)))}
+              className={`group grid w-full grid-cols-[7.5rem_1fr_6rem] items-center gap-2 rounded-md px-1 py-1 text-start text-sm ${expandable || onPick ? "hover:bg-grid/40" : "cursor-default"}`}
               title={`${r.category}: ${ils(r.total)}${cmp != null ? ` · ${compareLabel}: ${ils(cmp)}` : ""}`}
             >
               <span className="flex min-w-0 items-center gap-1.5 text-ink-2">
@@ -53,19 +57,26 @@ export function CategoryBars({ rows, compareKey, compareLabel, total }) {
             {open === r.category && (
               <ul className="mb-1 ms-6 grid gap-0.5 border-s border-grid ps-3">
                 {r.subs.map((s) => (
-                  <li key={s.name} className="grid grid-cols-[7rem_1fr_5.5rem] items-center gap-2 text-xs">
+                  <li key={s.name} onClick={() => onPick?.(r.category, s.name)}
+                    className={`grid grid-cols-[7rem_1fr_5.5rem] items-center gap-2 rounded px-1 py-0.5 text-xs ${onPick ? "cursor-pointer hover:bg-grid/40" : ""}`}>
                     <span className="truncate text-ink-2">{s.name}</span>
                     <span className="h-2.5 rounded-l-[3px] opacity-80" style={{ width: `${(s.total / max) * 100}%`, background: r.color ?? UNCAT_COLOR, ...edge }} />
                     <span className="num text-end">{ils(s.total)}</span>
                   </li>
                 ))}
                 {r.total - r.subs.reduce((a, s) => a + s.total, 0) > 1 && (
-                  <li className="grid grid-cols-[7rem_1fr_5.5rem] gap-2 text-xs text-muted">
+                  <li onClick={() => onPick?.(r.category, "__none")}
+                    className={`grid grid-cols-[7rem_1fr_5.5rem] gap-2 rounded px-1 py-0.5 text-xs text-muted ${onPick ? "cursor-pointer hover:bg-grid/40" : ""}`}>
                     <span>ללא תת־קטגוריה</span><span />
                     <span className="num text-end">{ils(r.total - r.subs.reduce((a, s) => a + s.total, 0))}</span>
                   </li>
                 )}
               </ul>
+            )}
+            </div>
+            {onPick && (
+              <button type="button" onClick={() => onPick(pickKey(r.category))} title={`עסקאות ב${r.category}`}
+                aria-label={`עסקאות ב${r.category}`} className="self-start rounded-md px-1.5 py-1 text-sm text-muted hover:bg-grid/40 hover:text-ink">↗</button>
             )}
           </li>
         );
@@ -75,7 +86,7 @@ export function CategoryBars({ rows, compareKey, compareLabel, total }) {
 }
 
 /** Donut in category colors, like the pie in the original sheet. Small slices fold into "אחר". */
-export function Donut({ rows, size = 180 }) {
+export function Donut({ rows, size = 180, onPick }) {
   const [hover, setHover] = useState(null);
   const positive = rows.filter((r) => r.total > 0);
   const total = positive.reduce((a, r) => a + r.total, 0);
@@ -104,7 +115,8 @@ export function Donut({ rows, size = 180 }) {
       <svg viewBox="0 0 120 120" width={size} height={size} onMouseLeave={() => setHover(null)}>
         {arcs.map((s) => (
           <path key={s.category} d={s.d} fill={s.color ?? UNCAT_COLOR} stroke="var(--color-surface)" strokeWidth="1"
-            opacity={hover && hover !== s.category ? 0.45 : 1} onMouseEnter={() => setHover(s.category)}>
+            opacity={hover && hover !== s.category ? 0.45 : 1} onMouseEnter={() => setHover(s.category)}
+            onClick={() => onPick && s.category !== "אחר" && onPick(pickKey(s.category))} style={{ cursor: onPick && s.category !== "אחר" ? "pointer" : undefined }}>
             <title>{`${s.category}: ${ils(s.total)} (${Math.round((s.total / total) * 100)}%)`}</title>
           </path>
         ))}
@@ -163,7 +175,8 @@ export function ListCard({ title, rows, empty = "אין נתונים" }) {
       ) : (
         <ul className="grid gap-2.5">
           {rows.map((r) => (
-            <li key={r.key} className="flex items-baseline justify-between gap-3 text-sm">
+            <li key={r.key} onClick={r.onClick}
+              className={`flex items-baseline justify-between gap-3 rounded text-sm ${r.onClick ? "-mx-1 cursor-pointer px-1 hover:bg-grid/40" : ""}`}>
               <span className="min-w-0">
                 <span className="block truncate">{r.main}</span>
                 <span className="block truncate text-xs text-muted">{r.sub}</span>
@@ -177,9 +190,9 @@ export function ListCard({ title, rows, empty = "אין נתונים" }) {
   );
 }
 
-export function Stat({ label, value, sub }) {
+export function Stat({ label, value, sub, onClick }) {
   return (
-    <div className="card p-4">
+    <div onClick={onClick} className={`card p-4 ${onClick ? "cursor-pointer hover:border-axis" : ""}`}>
       <div className="text-sm text-ink-2">{label}</div>
       <div className="num mt-1 text-2xl font-bold" style={{ textAlign: "right" }}>{value}</div>
       {sub && <div className="mt-1 text-xs">{sub}</div>}

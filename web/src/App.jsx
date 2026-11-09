@@ -15,14 +15,16 @@ const TABS = [
   { id: "settings", label: "הגדרות" },
 ];
 
-// #tab/param: param is a month (YYYY-MM), a year (YYYY) or a trip id
+// #tab/param?filters: param is a month (YYYY-MM), a year (YYYY) or a trip id;
+// filters (category, sub, trip, card, q, fixed, notrips, weekday) drive the transactions page
 const readHash = () => {
-  const [tab, param] = decodeURIComponent(location.hash.slice(1)).split("/");
-  return { tab: TABS.some((t) => t.id === tab) ? tab : "dashboard", param };
+  const [path, query = ""] = location.hash.slice(1).split("?");
+  const [tab, param] = decodeURIComponent(path).split("/");
+  return { tab: TABS.some((t) => t.id === tab) ? tab : "dashboard", param, filters: Object.fromEntries(new URLSearchParams(query)) };
 };
 
 export default function App() {
-  const [{ tab, param }, setRoute] = useState(readHash);
+  const [{ tab, param, filters }, setRoute] = useState(readHash);
   const [meta, setMeta] = useState(null);
   const [reviewCount, setReviewCount] = useState(0);
 
@@ -44,7 +46,12 @@ export default function App() {
 
   const isPeriod = (p) => /^\d{4}(-\d{2})?$/.test(p ?? "");
   const period = isPeriod(param) ? param : meta.defaultMonth;
-  const go = (t, p) => (location.hash = `${t}/${p ?? (t === "dashboard" || t === "transactions" ? period : "")}`);
+  const go = (t, p, f) => {
+    const q = f ? new URLSearchParams(Object.entries(f).filter(([, v]) => v != null && v !== "")).toString() : "";
+    location.hash = `${t}/${p ?? (t === "dashboard" || t === "transactions" ? period : "")}${q ? "?" + q : ""}`;
+  };
+  // drill-down from a chart: open the transactions page with these filters
+  const drill = (f, p = period) => go("transactions", p, f);
   const showPeriod = tab === "dashboard" || tab === "transactions";
 
   return (
@@ -84,13 +91,14 @@ export default function App() {
             <button onClick={() => go("import")} className="rounded-lg bg-ink px-4 py-2 text-surface">לייבוא</button>
           </div>
         ) : tab === "dashboard" ? (
-          <Dashboard key={period} month={period} onGo={go} />
+          <Dashboard key={period} month={period} onGo={go} onDrill={drill} />
         ) : tab === "trips" ? (
-          <Trips meta={meta} tripId={param} onGo={go} onChanged={refreshMeta} />
+          <Trips meta={meta} tripId={param} onGo={go} onDrill={drill} onChanged={refreshMeta} />
         ) : tab === "review" ? (
           <Transactions key="review" meta={meta} reviewMode onChanged={refreshMeta} />
         ) : tab === "transactions" ? (
-          <Transactions key={period} meta={meta} month={period} onChanged={refreshMeta} />
+          <Transactions key={period + JSON.stringify(filters)} meta={meta} month={period} filters={filters}
+            onFilters={(f) => go("transactions", period, f)} onChanged={refreshMeta} />
         ) : tab === "import" ? (
           <Import meta={meta} onImported={refreshMeta} onGo={go} />
         ) : (

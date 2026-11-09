@@ -1,21 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, ils, dateLabel } from "../api.js";
+import { api, ils, dateLabel, monthLabel } from "../api.js";
 import { Swatch } from "../components/charts.jsx";
 
 const SOURCE = { rule: "לפי עסק", trip: "טיול", ai: "הצעת AI", web: "חיפוש ברשת", manual: "ידני", history: "מהגיליון" };
 
-export default function Transactions({ meta, month, reviewMode = false, onChanged }) {
+const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+
+export default function Transactions({ meta, month, filters = {}, onFilters, reviewMode = false, onChanged }) {
   const [rows, setRows] = useState(null);
-  const [q, setQ] = useState("");
-  const [category, setCategory] = useState("");
+  const [q, setQ] = useState(filters.q ?? "");
   const [toast, setToast] = useState(null);
   const owners = useMemo(() => Object.fromEntries(meta.cards.map((c) => [c.last4, c.owner])), [meta.cards]);
+  const setFilter = (patch) => onFilters({ ...filters, ...patch });
 
-  const load = () =>
-    api.transactions(reviewMode ? { review: "1" } : { month, category, q }).then(setRows);
+  const load = () => api.transactions(reviewMode ? { review: "1" } : { month, ...filters }).then(setRows);
   useEffect(() => {
     load();
-  }, [month, category, q, reviewMode]);
+  }, [month, reviewMode]);
 
   const flash = (t) => {
     setToast(t);
@@ -97,18 +98,8 @@ export default function Transactions({ meta, month, reviewMode = false, onChange
           )}
         </div>
       ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="חיפוש עסק או הערה"
-            className="w-56 rounded-lg border border-grid bg-surface px-3 py-1.5 text-sm" />
-          <select value={category} onChange={(e) => setCategory(e.target.value)}
-            className="rounded-lg border border-grid bg-surface px-3 py-1.5 text-sm">
-            <option value="">כל הקטגוריות</option>
-            {meta.categories.map((c) => <option key={c.name}>{c.name}</option>)}
-          </select>
-          <span className="ms-auto text-sm text-ink-2">
-            {rows.length} עסקאות · <span className="num font-semibold text-ink">{ils(total, 2)}</span>
-          </span>
-        </div>
+        <FilterBar meta={meta} month={month} filters={filters} setFilter={setFilter} onFilters={onFilters}
+          q={q} setQ={setQ} count={rows.length} total={total} owners={owners} />
       )}
 
       {rows.length === 0 ? (
@@ -228,5 +219,62 @@ function Row({ r, owner, categories, trips, reviewMode, aiEnabled, onSave, onApp
         </td>
       )}
     </tr>
+  );
+}
+
+function FilterBar({ meta, month, filters, setFilter, onFilters, q, setQ, count, total, owners }) {
+  const cat = meta.categories.find((c) => c.name === filters.category);
+  const trip = meta.trips.find((t) => String(t.id) === filters.trip);
+  const chips = [
+    filters.card && { key: "card", label: `כרטיס ${owners[filters.card] ?? filters.card}` },
+    filters.fixed === "1" && { key: "fixed", label: "קבועות בלבד" },
+    filters.notrips === "1" && { key: "notrips", label: "בלי טיולים" },
+    filters.weekday && { key: "weekday", label: `יום ${DAYS[Number(filters.weekday)]} (משתנות, בלי טיולים)` },
+  ].filter(Boolean);
+  const any = Object.keys(filters).length > 0;
+  const sel = "rounded-lg border border-grid bg-surface px-3 py-1.5 text-sm";
+
+  return (
+    <div className="card grid gap-3 p-3">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h2 className="text-lg font-bold">
+          {filters.category === "__none" ? "לא מסווג" : filters.category ?? "כל העסקאות"}
+          {filters.sub && <span className="text-ink-2"> › {filters.sub === "__none" ? "ללא תת־קטגוריה" : filters.sub}</span>}
+        </h2>
+        <span className="text-sm text-ink-2">{trip ? trip.name : monthLabel(month)}</span>
+        <span className="ms-auto text-sm text-ink-2">
+          {count} עסקאות · <span className="num font-semibold text-ink">{ils(total, 2)}</span>
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <form onSubmit={(e) => (e.preventDefault(), setFilter({ q: q || undefined }))}>
+          <input value={q} onChange={(e) => setQ(e.target.value)} onBlur={() => q !== (filters.q ?? "") && setFilter({ q: q || undefined })}
+            placeholder="חיפוש עסק או הערה (Enter)" className={`w-56 ${sel}`} />
+        </form>
+        <select value={filters.category ?? ""} onChange={(e) => setFilter({ category: e.target.value || undefined, sub: undefined })} className={sel} aria-label="קטגוריה">
+          <option value="">כל הקטגוריות</option>
+          {meta.categories.map((c) => <option key={c.name}>{c.name}</option>)}
+          <option value="__none">לא מסווג</option>
+        </select>
+        {cat?.subs.length > 0 && (
+          <select value={filters.sub ?? ""} onChange={(e) => setFilter({ sub: e.target.value || undefined })} className={sel} aria-label="תת־קטגוריה">
+            <option value="">כל התתי־קטגוריות</option>
+            {cat.subs.map((s) => <option key={s}>{s}</option>)}
+            <option value="__none">ללא תת־קטגוריה</option>
+          </select>
+        )}
+        <select value={filters.trip ?? ""} onChange={(e) => setFilter({ trip: e.target.value || undefined })} className={sel} aria-label="טיול">
+          <option value="">{`כל ה${monthLabel(month).startsWith("שנת") ? "שנה" : "חודש"}`}</option>
+          {meta.trips.map((t) => <option key={t.id} value={t.id}>טיול: {t.name}</option>)}
+        </select>
+        {chips.map((c) => (
+          <span key={c.key} className="flex items-center gap-1 rounded-full border border-grid px-2.5 py-0.5 text-sm">
+            {c.label}
+            <button onClick={() => setFilter({ [c.key]: undefined })} className="text-xs text-muted hover:text-critical" aria-label={`הסרת ${c.label}`}>✕</button>
+          </span>
+        ))}
+        {any && <button onClick={() => (setQ(""), onFilters({}))} className="text-sm text-series-1 hover:underline">ניקוי סינון</button>}
+      </div>
+    </div>
   );
 }

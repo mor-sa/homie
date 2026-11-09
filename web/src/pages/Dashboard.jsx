@@ -9,7 +9,7 @@ const save = (k, v) => {
   try { localStorage.setItem(k, v); } catch { /* private mode */ }
 };
 
-export default function Dashboard({ month, onGo }) {
+export default function Dashboard({ month, onGo, onDrill }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const [trips, setTrips] = useState(() => load("dash.trips", "include"));
@@ -40,6 +40,9 @@ export default function Dashboard({ month, onGo }) {
   const hasCompare = !isYear && d.byCategory.some((c) => c.prev);
   const delta = !isYear && d.kpis.prevTotal ? d.kpis.total / d.kpis.prevTotal - 1 : null;
   const unit = avg ? " לחודש" : "";
+  // drill-down keeps the "without trips" choice
+  const drill = (f) => onDrill({ ...(trips === "exclude" ? { notrips: "1" } : {}), ...f });
+  const pick = (category, sub) => drill({ category, sub });
 
   return (
     <div className="grid gap-4">
@@ -73,9 +76,9 @@ export default function Dashboard({ month, onGo }) {
               {delta > 0 ? "▲" : "▼"} <span className="num">{Math.abs(Math.round(delta * 100))}%</span> מ{monthLabel(d.prevMonth).split(" ")[0]}
             </span>
           )} />
-        <Stat label={"הוצאות קבועות" + unit} value={ils(k.fixed)} sub={<span className="text-muted">משתנות: {ils(k.variable)}</span>} />
+        <Stat onClick={() => drill({ fixed: "1" })} label={"הוצאות קבועות" + unit} value={ils(k.fixed)} sub={<span className="text-muted">משתנות: {ils(k.variable)}</span>} />
         {k.byCard.map((c) => (
-          <Stat key={c.card} label={`כרטיס ${c.owner}${unit}`} value={ils(c.total)}
+          <Stat key={c.card} onClick={() => drill({ card: c.card })} label={`כרטיס ${c.owner}${unit}`} value={ils(c.total)}
             sub={<span className="num text-muted">{k.total ? Math.round((c.total / k.total) * 100) : 0}%</span>} />
         ))}
       </div>
@@ -89,12 +92,12 @@ export default function Dashboard({ month, onGo }) {
             <span>לחיצה על קטגוריה מציגה תתי־קטגוריות</span>
           </p>
           <CategoryBars rows={byCategory} compareKey={hasCompare ? "prev" : undefined} compareLabel={monthLabel(d.prevMonth)}
-            total={isYear ? k.total : undefined} />
+            total={isYear ? k.total : undefined} onPick={pick} />
         </section>
         <div className="grid gap-4 lg:col-span-2">
           <section className="card p-4">
             <h3 className="mb-3 font-semibold">התפלגות</h3>
-            <Donut rows={byCategory} />
+            <Donut rows={byCategory} onPick={pick} />
           </section>
           {d.insights.length > 0 && (
             <section className="card p-4">
@@ -140,10 +143,10 @@ export default function Dashboard({ month, onGo }) {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <ListCard title="איפה הכי הרבה כסף" rows={d.topMerchants.map((m) => ({
-          key: m.merchant, main: m.merchant, sub: `${m.count} עסקאות · ${m.category ?? "לא מסווג"}`, value: m.total }))} />
-        <ListCard title="העסקאות הגדולות" rows={d.largest.map((t) => ({ key: t.id, main: t.note || t.merchant, sub: txLabel(t), value: t.amount }))} />
+          key: m.merchant, main: m.merchant, sub: `${m.count} עסקאות · ${m.category ?? "לא מסווג"}`, value: m.total, onClick: () => drill({ q: m.merchant }) }))} />
+        <ListCard title="העסקאות הגדולות" rows={d.largest.map((t) => ({ key: t.id, main: t.note || t.merchant, sub: txLabel(t), value: t.amount, onClick: () => drill({ q: t.merchant }) }))} />
         <ListCard title="קבועות החודש" empty="אין הוצאות שסומנו כקבועות"
-          rows={d.subscriptions.map((s) => ({ key: s.merchant, main: s.merchant, sub: s.category, value: s.total }))} />
+          rows={d.subscriptions.map((s) => ({ key: s.merchant, main: s.merchant, sub: s.category, value: s.total, onClick: () => drill({ q: s.merchant }) }))} />
       </div>
 
       <section className="card p-4">
@@ -153,6 +156,7 @@ export default function Dashboard({ month, onGo }) {
           data={d.weekday.map((v, i) => ({ v, i }))}
           series={[{ key: "v", color: "var(--color-series-1)" }]}
           labelOf={(x) => ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"][x.i]}
+          onPick={(x) => onDrill({ weekday: String(x.i) })}
           tipOf={(x) => <span className="text-ink-2">יום {["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"][x.i]}: <span className="num">{ils(x.v)}</span></span>}
         />
       </section>

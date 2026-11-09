@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ils, dateLabel } from "../api.js";
 import { CategoryBars, ColumnChart, Donut, ListCard, Stat, txLabel } from "../components/charts.jsx";
 
-export default function Trips({ meta, tripId, onGo, onChanged }) {
+export default function Trips({ meta, tripId, onGo, onDrill, onChanged }) {
   const trips = meta.trips;
   const id = Number(tripId) || trips[0]?.id;
   const [d, setD] = useState(null);
@@ -30,12 +30,12 @@ export default function Trips({ meta, tripId, onGo, onChanged }) {
       {!id && <p className="card p-8 text-center text-ink-2">עוד אין טיולים. מוסיפים טיול בהגדרות, וכל ההוצאות בתאריכים שלו מתויגות אליו.</p>}
       {err && <p className="text-critical">{err}</p>}
       {id && !d && !err && <p className="text-muted">טוען…</p>}
-      {d && <TripView d={d} onGo={onGo} onReload={async () => { await reload(); onChanged(); }} />}
+      {d && <TripView d={d} onGo={onGo} onDrill={(f) => onDrill({ trip: String(id), ...f })} onReload={async () => { await reload(); onChanged(); }} />}
     </div>
   );
 }
 
-function TripView({ d, onGo, onReload }) {
+function TripView({ d, onGo, onDrill, onReload }) {
   const t = d.trip;
   return (
     <>
@@ -51,7 +51,7 @@ function TripView({ d, onGo, onReload }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="סה״כ הטיול" value={ils(d.total)} />
+        <Stat label="סה״כ הטיול" value={ils(d.total)} onClick={() => onDrill({})} sub={<span className="text-series-1">לכל העסקאות ↗</span>} />
         <Stat label="ליום" value={ils(d.perDay)} />
         <Stat label="שולם מראש" value={ils(d.prepaid)} sub={<span className="text-muted">{d.prepaidCount} עסקאות לפני היציאה</span>} />
         <Stat label="לפי כרטיס" value={<span className="text-base">{d.byCard.map((c) => `${c.owner} ${ils(c.total)}`).join(" · ")}</span>} />
@@ -63,11 +63,11 @@ function TripView({ d, onGo, onReload }) {
         <section className="card p-4 lg:col-span-3">
           <h3 className="font-semibold">לפי קטגוריה</h3>
           <p className="mb-3 text-xs text-muted">לחיצה על קטגוריה מציגה תתי־קטגוריות</p>
-          <CategoryBars rows={d.byCategory} total={d.total} />
+          <CategoryBars rows={d.byCategory} total={d.total} onPick={(category, sub) => onDrill({ category, sub })} />
         </section>
         <section className="card p-4 lg:col-span-2">
           <h3 className="mb-3 font-semibold">התפלגות</h3>
-          <Donut rows={d.byCategory} />
+          <Donut rows={d.byCategory} onPick={(category) => onDrill({ category })} />
           {d.currencies.length > 1 && (
             <ul className="mt-4 grid gap-1 text-sm">
               {d.currencies.map((c) => (
@@ -93,7 +93,7 @@ function TripView({ d, onGo, onReload }) {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <ListCard title="איפה הכי הרבה כסף" rows={d.topMerchants.map((m) => ({
-          key: m.merchant, main: m.merchant, sub: `${m.count} עסקאות · ${m.category ?? "לא מסווג"}`, value: m.total }))} />
+          key: m.merchant, main: m.merchant, sub: `${m.count} עסקאות · ${m.category ?? "לא מסווג"}`, value: m.total, onClick: () => onDrill({ q: m.merchant }) }))} />
         <ListCard title="העסקאות הגדולות" rows={d.largest.map((x) => ({ key: x.id, main: x.note || x.merchant, sub: txLabel(x), value: x.amount }))} />
         <section className="card p-4">
           <h3 className="mb-3 font-semibold">השוואה בין טיולים</h3>
