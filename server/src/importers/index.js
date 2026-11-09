@@ -39,14 +39,23 @@ function parseCal({ grid }) {
   const title = grid.slice(0, h.r).flat().map(clean).join(" ");
   const card = title.match(/(\d{4})\s*$/)?.[1] ?? title.match(/כרטיס\D*(\d{4})/)?.[1] ?? null;
 
+  // Cal has two exports:
+  //  "פירוט עסקאות": one amount column "סכום בש״ח"; foreign currency appears in the notes
+  //  "פירוט חיובים": "סכום עסקה" (ORIGINAL currency) + "סכום חיוב" (₪ charged); the billing date is in the title
+  // The shekel column must win, otherwise foreign purchases are counted in their own currency.
+  const ilsCol = [col(h.cells, "סכום", "חיוב"), col(h.cells, "סכום", 'ש"ח'), col(h.cells, "סכום", "ש״ח"), col(h.cells, "סכום", "שח")]
+    .find((i) => i >= 0);
+  const txnAmountCol = col(h.cells, "סכום", "עסקה");
   const c = {
     date: col(h.cells, "תאריך"),
     merchant: col(h.cells, "שם בית עסק"),
-    amount: col(h.cells, "סכום"),
+    amount: ilsCol ?? col(h.cells, "סכום"),
+    orig: txnAmountCol >= 0 && txnAmountCol !== ilsCol ? txnAmountCol : -1,
     charge: col(h.cells, "מועד"),
     type: col(h.cells, "סוג"),
     notes: col(h.cells, "הערות"),
   };
+  const titleCharge = title.match(/לחיוב ב-?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/)?.[1];
 
   const out = [];
   for (let r = h.r + 1; r < grid.length; r++) {
@@ -57,14 +66,17 @@ function parseCal({ grid }) {
     const note = clean(row[c.notes]);
     const amount = num(row[c.amount]);
     const fx = note.match(/סכום העסקה הוא\s*([\d.,]+)\s*([A-Z$€£]{1,3})/);
+    const orig = c.orig >= 0 ? num(row[c.orig]) : null;
+    // different numbers in the two columns = foreign currency (this export doesn't name the currency)
+    const foreign = !fx && orig != null && amount != null && Math.abs(orig - amount) > 0.01;
     out.push({
       card,
       purchase_date: date,
-      charge_date: excelDate(row[c.charge]),
+      charge_date: excelDate(row[c.charge]) ?? (titleCharge ? excelDate(titleCharge) : null),
       merchant,
       amount,
-      orig_amount: fx ? num(fx[1]) : null,
-      orig_currency: fx ? (fx[2] === "$" ? "USD" : fx[2]) : null,
+      orig_amount: fx ? num(fx[1]) : foreign ? orig : null,
+      orig_currency: fx ? (fx[2] === "$" ? "USD" : fx[2]) : foreign ? "מט״ח" : null,
       txn_type: clean(row[c.type]) || null,
       status: amount == null || note.includes("בקליטה") ? "pending" : "posted",
     });
