@@ -8,10 +8,11 @@ export default function Trips({ meta, tripId, onGo, onChanged }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
 
+  const reload = () => api.tripDashboard(id).then(setD, (e) => setErr(e.message));
   useEffect(() => {
     setD(null);
     setErr(null);
-    if (id) api.tripDashboard(id).then(setD, (e) => setErr(e.message));
+    if (id) reload();
   }, [id]);
 
   return (
@@ -29,12 +30,12 @@ export default function Trips({ meta, tripId, onGo, onChanged }) {
       {!id && <p className="card p-8 text-center text-ink-2">עוד אין טיולים. מוסיפים טיול בהגדרות, וכל ההוצאות בתאריכים שלו מתויגות אליו.</p>}
       {err && <p className="text-critical">{err}</p>}
       {id && !d && !err && <p className="text-muted">טוען…</p>}
-      {d && <TripView d={d} onGo={onGo} onChanged={onChanged} />}
+      {d && <TripView d={d} onGo={onGo} onReload={async () => { await reload(); onChanged(); }} />}
     </div>
   );
 }
 
-function TripView({ d, onGo }) {
+function TripView({ d, onGo, onReload }) {
   const t = d.trip;
   return (
     <>
@@ -55,6 +56,8 @@ function TripView({ d, onGo }) {
         <Stat label="שולם מראש" value={ils(d.prepaid)} sub={<span className="text-muted">{d.prepaidCount} עסקאות לפני היציאה</span>} />
         <Stat label="לפי כרטיס" value={<span className="text-base">{d.byCard.map((c) => `${c.owner} ${ils(c.total)}`).join(" · ")}</span>} />
       </div>
+
+      {d.candidates.length > 0 && <Candidates d={d} onReload={onReload} />}
 
       <div className="grid gap-4 lg:grid-cols-5">
         <section className="card p-4 lg:col-span-3">
@@ -109,5 +112,41 @@ function TripView({ d, onGo }) {
         </section>
       </div>
     </>
+  );
+}
+
+function Candidates({ d, onReload }) {
+  const [busy, setBusy] = useState(false);
+  const attach = async (ids) => {
+    setBusy(true);
+    for (const id of ids) await api.update(id, { trip_id: d.trip.id, applyToMerchant: false });
+    await onReload();
+    setBusy(false);
+  };
+  return (
+    <section className="card border-series-2/40 p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <h3 className="font-semibold">אולי שייכות לטיול?</h3>
+          <p className="text-xs text-muted">
+            הוצאות מ־4 החודשים שלפני היציאה שנראות קשורות לטיול (טיסות, לינה, ביטוח, מט״ח) ולא מתויגות לאף טיול.
+            הוצאה שמצורפת לטיול נספרת בו בלי קשר לתאריך.
+          </p>
+        </div>
+        <button disabled={busy} onClick={() => attach(d.candidates.map((c) => c.id))}
+          className="rounded-lg border border-grid px-3 py-1.5 text-sm hover:bg-grid/50 disabled:opacity-50">צירוף הכל</button>
+      </div>
+      <ul className="grid gap-1.5">
+        {d.candidates.map((c) => (
+          <li key={c.id} className="flex items-center gap-3 text-sm">
+            <span className="num w-12 shrink-0 text-muted">{dateLabel(c.purchase_date)}</span>
+            <span className="min-w-0 flex-1 truncate" title={c.merchant}>{c.merchant}</span>
+            <span className={`num shrink-0 ${c.amount < 0 ? "text-good" : ""}`}>{ils(c.amount)}</span>
+            <button disabled={busy} onClick={() => attach([c.id])}
+              className="shrink-0 rounded-md border border-grid px-2.5 py-0.5 text-xs hover:bg-grid/50 disabled:opacity-50">צירוף</button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

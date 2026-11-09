@@ -217,6 +217,21 @@ export function tripDashboard(id) {
     }, {}),
   ).sort((a, b) => b.total - a.total);
 
+  // Untagged expenses from the 4 months before departure that look like trip costs: flights, hotels,
+  // travel insurance, eSIM, foreign currency. Shown as suggestions; a person attaches them.
+  const TRAVEL = /airline|airways|airwa|emirates|etihad|el ?al|אל על|ישראייר|arkia|ארקיע|wizz|ryanair|easyjet|lufthansa|turkish|pegasus|aegean|klm|air ?france|british air|booking|bkg|agoda|expedia|airbnb|hotel|hostel|trip\.com|klook|airalo|esim|ביטוח חו|ביטוח נסיעות|passportcard|פספורטכארד|השכרת רכב|rentalcars|hertz|avis|sixt|budget|eldan|אלדן/i;
+  const lookback = new Date(Date.parse(trip.start_date) - 120 * 86400000).toISOString().slice(0, 10);
+  const candidates = db
+    .prepare(
+      `SELECT * FROM transactions WHERE ${POSTED} AND trip_id IS NULL AND is_fixed = 0
+         AND purchase_date >= ? AND purchase_date <= ? ORDER BY purchase_date DESC`,
+    )
+    .all(lookback, trip.end_date)
+    .filter((r) =>
+      TRAVEL.test(r.merchant) || r.orig_currency || r.category === "לינה" ||
+      (r.subcategory && /טיסות|ביטוח נסיעות|eSIM|השכרת רכב/.test(r.subcategory)))
+    .slice(0, 30);
+
   const allTrips = db
     .prepare(
       `SELECT t.id, t.name, t.start_date, t.end_date, IFNULL(SUM(x.amount),0) AS total, COUNT(x.id) AS n
@@ -245,5 +260,6 @@ export function tripDashboard(id) {
     topMerchants: merchantsOf(rows).sort((a, b) => b.total - a.total).slice(0, 8),
     largest: [...rows].sort((a, b) => b.amount - a.amount).slice(0, 5),
     allTrips,
+    candidates,
   };
 }
