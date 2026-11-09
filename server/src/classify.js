@@ -75,6 +75,7 @@ export async function classifyWithAi(rows) {
     date: r.purchase_date,
     ...(r.orig_currency ? { currency: r.orig_currency } : {}),
     ...(r.trip_id ? { trip: trips[r.trip_id] } : {}),
+    ...(r.sector ? { card_company_sector: r.sector } : {}),
   }));
   const keys = [...byKey.keys()];
 

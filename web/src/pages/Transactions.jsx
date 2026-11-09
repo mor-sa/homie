@@ -117,7 +117,7 @@ export default function Transactions({ meta, month, filters = {}, onFilters, rev
                 <th>טיול</th>
                 <th>קבועה</th>
                 <th>הערה</th>
-                {reviewMode && <th />}
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -125,8 +125,18 @@ export default function Transactions({ meta, month, filters = {}, onFilters, rev
                 <Row key={r.id} r={r} owner={owners[r.card] ?? r.card} categories={meta.categories} trips={meta.trips}
                   reviewMode={reviewMode} aiEnabled={meta.aiEnabled} onSave={(p) => save(r, p)}
                   onResearch={async () => {
-                    try { await api.research(r.id); } catch (e) { flash(e.message); }
-                    await load();
+                    if (!meta.aiEnabled) {
+                      flash("כדי להפעיל חיפוש AI: מוסיפים ANTHROPIC_API_KEY לקובץ server/.env ומפעילים מחדש את השרת");
+                      return null;
+                    }
+                    try {
+                      const res = await api.research(r.id);
+                      await load();
+                      return res;
+                    } catch (e) {
+                      flash(e.message);
+                      return null;
+                    }
                   }}
                   onApprove={async () => { await api.approve([r.id]); await load(); onChanged(); }} />
               ))}
@@ -145,6 +155,7 @@ export default function Transactions({ meta, month, filters = {}, onFilters, rev
 function Row({ r, owner, categories, trips, reviewMode, aiEnabled, onSave, onApprove, onResearch }) {
   const [note, setNote] = useState(r.note ?? "");
   const [searching, setSearching] = useState(false);
+  const [suggestion, setSuggestion] = useState(null); // web-search result for an already-reviewed row
   const pending = r.status === "pending";
   const sources = r.ai_sources ? JSON.parse(r.ai_sources) : [];
   const cat = categories.find((c) => c.name === r.category);
@@ -158,7 +169,15 @@ function Row({ r, owner, categories, trips, reviewMode, aiEnabled, onSave, onApp
           {r.ai_reason && <> · {r.ai_reason}</>}
           {r.orig_currency && <> · <span className="num">{r.orig_amount} {r.orig_currency}</span></>}
         </div>
-        {reviewMode && sources.length > 0 && (
+        {suggestion && (suggestion.category !== r.category || suggestion.subcategory !== r.subcategory) && (
+          <div className="mt-1 flex flex-wrap items-center gap-2 rounded-md bg-series-1/10 px-2 py-1 text-xs">
+            <span>הצעה: <b>{suggestion.category}{suggestion.subcategory ? ` › ${suggestion.subcategory}` : ""}</b></span>
+            <button className="rounded border border-grid bg-surface px-2 py-0.5 hover:bg-grid/50"
+              onClick={() => (onSave({ category: suggestion.category, subcategory: suggestion.subcategory ?? "" }), setSuggestion(null))}>החלה</button>
+            <button className="text-muted hover:text-ink" onClick={() => setSuggestion(null)} aria-label="ביטול">✕</button>
+          </div>
+        )}
+        {sources.length > 0 && (
           <div className="mt-0.5 flex flex-wrap gap-x-2 text-xs">
             {sources.map((s) => (
               <a key={s.url} href={s.url} target="_blank" rel="noreferrer" className="max-w-[12rem] truncate text-series-1 hover:underline" title={s.url}>
@@ -205,19 +224,25 @@ function Row({ r, owner, categories, trips, reviewMode, aiEnabled, onSave, onApp
           onBlur={() => note !== (r.note ?? "") && onSave({ note, applyToMerchant: false })}
           placeholder="—" className="w-40 rounded-md border border-transparent bg-transparent px-2 py-1 hover:border-grid focus:border-grid" />
       </td>
-      {reviewMode && (
-        <td className="whitespace-nowrap">
+      <td className="whitespace-nowrap">
+        {reviewMode && (
           <button disabled={!r.category} onClick={onApprove}
-            className="rounded-md border border-grid px-3 py-1 hover:bg-grid/50 disabled:opacity-40">אישור</button>
-          {aiEnabled && (
-            <button disabled={searching} title="חיפוש ברשת מה העסק הזה"
-              onClick={async () => { setSearching(true); await onResearch(); setSearching(false); }}
-              className="ms-1 rounded-md border border-grid px-2 py-1 hover:bg-grid/50 disabled:opacity-50">
-              {searching ? "…" : "🔎"}
-            </button>
-          )}
-        </td>
-      )}
+            className="me-1 rounded-md border border-grid px-3 py-1 hover:bg-grid/50 disabled:opacity-40">אישור</button>
+        )}
+        {!pending && (
+          <button disabled={searching}
+            title={aiEnabled ? "מה החיוב הזה? חיפוש ברשת לפי שם העסק, הטיול והעסקאות מאותו יום" : "חיפוש AI כבוי: חסר ANTHROPIC_API_KEY"}
+            onClick={async () => {
+              setSearching(true);
+              const res = await onResearch();
+              setSearching(false);
+              if (res && !reviewMode) setSuggestion(res);
+            }}
+            className={`rounded-md border border-grid px-2 py-1 hover:bg-grid/50 disabled:opacity-50 ${aiEnabled ? "" : "opacity-50"}`}>
+            {searching ? "מחפש…" : "🔎"}
+          </button>
+        )}
+      </td>
     </tr>
   );
 }

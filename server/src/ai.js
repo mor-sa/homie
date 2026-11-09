@@ -32,18 +32,21 @@ export async function researchMerchant(t, categories, examples) {
     },
   };
 
-  const prompt = `זוג בישראל רוצה לדעת מה זה העסק הזה בפירוט כרטיס האשראי שלהם, כדי לסווג את ההוצאה.
+  const ctx = t.context ?? {};
+  const prompt = `זוג בישראל רוצה לדעת מה זה החיוב הזה בפירוט כרטיס האשראי שלהם, כדי לסווג את ההוצאה.
 
 שם העסק כפי שמופיע בפירוט: ${t.merchant}
-סכום: ₪${t.amount}${t.orig_currency ? ` (${t.orig_amount} ${t.orig_currency})` : ""}
+סכום: ₪${t.amount}${t.orig_amount != null ? ` (במקור ${t.orig_amount}${t.orig_currency && t.orig_currency !== "מט״ח" ? " " + t.orig_currency : " במטבע זר"})` : ""}
 תאריך: ${t.purchase_date}
-
-חפש ברשת מה העסק הזה (שמות בפירוטי אשראי לרוב מקוצרים או שם החברה הרשמית ולא שם המותג). ואז קרא ל-submit_category.
+${t.sector ? `הענף לפי חברת האשראי: ${t.sector}\n` : ""}${t.note ? `הערה שהם כתבו: ${t.note}\n` : ""}${ctx.trip ? `העסקה שייכת לטיול "${ctx.trip.name}" (${ctx.trip.start_date} עד ${ctx.trip.end_date}). חפש את העסק במדינה של הטיול, וסווג לפי מה שנקנה (מסעדה, מלון, תחבורה…), לא לפי המדינה.\n` : ""}${ctx.sameDay?.length ? `עסקאות אחרות באותו יום (עוזרות להבין איפה הם היו): ${ctx.sameDay.join("; ")}\n` : ""}
+חפש ברשת מה העסק הזה. שמות בפירוטי אשראי לרוב מקוצרים, או שם החברה הרשמית ולא שם המותג, ולפעמים כוללים מספר סניף או קוד מדינה בסוף. ואז קרא ל-submit_category.
 קטגוריות אפשריות (קטגוריה, או "קטגוריה > תת-קטגוריה" כשיש התאמה ברורה): ${categories.join(", ")}
-${t.trip_name ? `העסקה נעשתה בטיול: ${t.trip_name}. סווג לפי מה שנקנה, לא לפי המדינה.\n` : ""}דוגמאות לאיך הם מסווגים: ${examples.slice(0, 30).map((e) => `${e.merchant} → ${e.category}`).join("; ")}
+דוגמאות לאיך הם מסווגים: ${examples.slice(0, 30).map((e) => `${e.merchant} → ${e.category}`).join("; ")}
 אם גם אחרי חיפוש לא ברור, בחר את הקטגוריה הסבירה ביותר וסמן confident=false.`;
 
-  const tools = [{ type: "web_search_20260209", name: "web_search", max_uses: 4, user_location: { type: "approximate", country: "IL" } }, submit];
+  // abroad, don't bias search results toward Israel
+  const search = { type: "web_search_20260209", name: "web_search", max_uses: 4, ...(ctx.trip ? {} : { user_location: { type: "approximate", country: "IL" } }) };
+  const tools = [search, submit];
   const messages = [{ role: "user", content: prompt }];
   const sources = new Map();
 

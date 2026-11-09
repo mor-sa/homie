@@ -11,14 +11,14 @@ const countSame = db.prepare(
 const insert = db.prepare(`
   INSERT OR IGNORE INTO transactions
     (dedupe_key, card, purchase_date, charge_date, merchant, merchant_key, amount, orig_amount, orig_currency,
-     txn_type, status, category, subcategory, category_source, ai_reason, needs_review, is_fixed, note, trip_id, import_id)
+     txn_type, sector, status, category, subcategory, category_source, ai_reason, needs_review, is_fixed, note, trip_id, import_id)
   VALUES
     (:dedupe_key, :card, :purchase_date, :charge_date, :merchant, :merchant_key, :amount, :orig_amount, :orig_currency,
-     :txn_type, :status, :category, :subcategory, :category_source, :ai_reason, :needs_review, :is_fixed, :note, :trip_id, :import_id)`);
+     :txn_type, :sector, :status, :category, :subcategory, :category_source, :ai_reason, :needs_review, :is_fixed, :note, :trip_id, :import_id)`);
 
 const COLS = [
   "card", "purchase_date", "charge_date", "merchant", "merchant_key", "amount", "orig_amount", "orig_currency",
-  "txn_type", "status", "category", "subcategory", "category_source", "ai_reason", "needs_review", "is_fixed", "note", "trip_id",
+  "txn_type", "sector", "status", "category", "subcategory", "category_source", "ai_reason", "needs_review", "is_fixed", "note", "trip_id",
 ];
 
 export async function importFile(filename, buffer) {

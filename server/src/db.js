@@ -77,7 +77,8 @@ const cols = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.nam
 const addCol = (t, c, def) => cols(t).includes(c) || db.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${def}`);
 addCol("transactions", "ai_sources", "TEXT");               // JSON [{url,title}] from web research
 addCol("transactions", "subcategory", "TEXT");
-addCol("transactions", "trip_manual", "INTEGER NOT NULL DEFAULT 0"); // trip set by hand (e.g. a booking paid in advance)
+addCol("transactions", "trip_manual", "INTEGER NOT NULL DEFAULT 0");
+addCol("transactions", "sector", "TEXT"); // the card company's own merchant sector ("ענף"), a hint for AI // trip set by hand (e.g. a booking paid in advance)
 addCol("rules", "subcategory", "TEXT");
 addCol("categories", "color", "TEXT");
 

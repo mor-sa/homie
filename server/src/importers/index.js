@@ -54,6 +54,7 @@ function parseCal({ grid }) {
     charge: col(h.cells, "מועד"),
     type: col(h.cells, "סוג"),
     notes: col(h.cells, "הערות"),
+    sector: col(h.cells, "ענף"),
   };
   const titleCharge = title.match(/לחיוב ב-?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/)?.[1];
 
@@ -78,6 +79,7 @@ function parseCal({ grid }) {
       orig_amount: fx ? num(fx[1]) : foreign ? orig : null,
       orig_currency: fx ? (fx[2] === "$" ? "USD" : fx[2]) : foreign ? "מט״ח" : null,
       txn_type: clean(row[c.type]) || null,
+      sector: c.sector >= 0 ? clean(row[c.sector]) || null : null,
       status: amount == null || note.includes("בקליטה") ? "pending" : "posted",
     });
   }

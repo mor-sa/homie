@@ -220,15 +220,23 @@ async function research(t) {
     .prepare(`SELECT sample_name AS merchant, category || IFNULL(' > ' || subcategory, '') AS category
               FROM rules ORDER BY manual DESC, rowid DESC LIMIT 30`)
     .all();
-  const trip_name = t.trip_id ? db.prepare("SELECT name FROM trips WHERE id=?").get(t.trip_id)?.name : null;
-  const r = await researchMerchant({ ...t, trip_name }, categoryOptions(), examples);
+  const trip = t.trip_id ? db.prepare("SELECT name, start_date, end_date FROM trips WHERE id=?").get(t.trip_id) : null;
+  const sameDay = db
+    .prepare("SELECT DISTINCT merchant FROM transactions WHERE purchase_date=? AND id != ? AND merchant_key != ? LIMIT 10")
+    .all(t.purchase_date, t.id, t.merchant_key)
+    .map((r) => r.merchant);
+  const r = await researchMerchant({ ...t, context: { trip, sameDay } }, categoryOptions(), examples);
   const { category, subcategory } = splitOption(r.category);
   const reason = `🔎 ${r.business_description}. ${r.reason}${r.confident ? "" : " (לא בטוח)"}`;
-  // same suggestion for every unreviewed row of this merchant
-  db.prepare(
-    `UPDATE transactions SET category=?, subcategory=?, category_source='web', ai_reason=?, ai_sources=?, needs_review=1
-     WHERE merchant_key=? AND needs_review=1`,
-  ).run(category, subcategory, reason, JSON.stringify(r.sources), t.merchant_key);
+  tx(() => {
+    // the explanation is always kept on the row that was searched
+    db.prepare("UPDATE transactions SET ai_reason=?, ai_sources=? WHERE id=?").run(reason, JSON.stringify(r.sources), t.id);
+    // rows still waiting for review get the suggestion (same merchant), still pending approval
+    db.prepare(
+      `UPDATE transactions SET category=?, subcategory=?, category_source='web', ai_reason=?, ai_sources=?
+       WHERE merchant_key=? AND needs_review=1`,
+    ).run(category, subcategory, reason, JSON.stringify(r.sources), t.merchant_key);
+  });
   return { ...r, category, subcategory, reason };
 }
 
