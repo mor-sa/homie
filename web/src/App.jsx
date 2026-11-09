@@ -71,15 +71,7 @@ export default function App() {
             ))}
           </nav>
           {showPeriod && meta.months.length > 0 && (
-            <select value={period} onChange={(e) => go(tab, e.target.value)}
-              className="ms-auto rounded-lg border border-grid bg-surface px-3 py-1.5 text-sm" aria-label="תקופה">
-              <optgroup label="חודשים">
-                {meta.months.map((m) => <option key={m.month} value={m.month}>{monthLabel(m.month)}</option>)}
-              </optgroup>
-              <optgroup label="שנים">
-                {meta.years.map((y) => <option key={y.year} value={y.year}>{monthLabel(y.year)}</option>)}
-              </optgroup>
-            </select>
+            <PeriodNav period={period} meta={meta} onGo={(p) => go(tab, p, tab === "transactions" ? filters : undefined)} />
           )}
         </div>
       </header>
@@ -105,6 +97,55 @@ export default function App() {
           <Settings meta={meta} onChanged={refreshMeta} />
         )}
       </main>
+    </div>
+  );
+}
+
+// Previous / next month (or year), like Wikipedia's "« previous | next »". In RTL the earlier period
+// is on the right. ←/→ on the keyboard move too (left = later, matching the arrows on screen).
+function PeriodNav({ period, meta, onGo }) {
+  const isYear = /^\d{4}$/.test(period);
+  const shift = (d) => {
+    if (isYear) return String(Number(period) + d);
+    const [y, m] = period.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1 + d, 1)).toISOString().slice(0, 7);
+  };
+  const list = isYear ? meta.years.map((y) => y.year) : meta.months.map((m) => m.month);
+  const [min, max] = [list.at(-1), list[0]];
+  const prev = shift(-1), next = shift(1);
+  const canPrev = prev >= min, canNext = next <= max;
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.target.closest?.("input, select, textarea") || e.altKey || e.metaKey || e.ctrlKey) return;
+      if (e.key === "ArrowRight" && canPrev) onGo(prev);
+      if (e.key === "ArrowLeft" && canNext) onGo(next);
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, [prev, next, canPrev, canNext]);
+
+  const btn = "flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-ink-2 hover:bg-grid/60 disabled:opacity-30 disabled:hover:bg-transparent";
+  const unit = isYear ? "שנה" : "חודש";
+  return (
+    <div className="ms-auto flex items-center gap-1">
+      <button className={btn} disabled={!canPrev} onClick={() => onGo(prev)} title={`${unit} קודם: ${monthLabel(prev)} (→)`}>
+        <span aria-hidden>»</span><span className="hidden sm:inline">{monthLabel(prev, !isYear)}</span>
+        <span className="sr-only">{unit} קודם</span>
+      </button>
+      <select value={period} onChange={(e) => onGo(e.target.value)}
+        className="rounded-lg border border-grid bg-surface px-3 py-1.5 text-sm" aria-label="תקופה">
+        <optgroup label="חודשים">
+          {meta.months.map((m) => <option key={m.month} value={m.month}>{monthLabel(m.month)}</option>)}
+        </optgroup>
+        <optgroup label="שנים">
+          {meta.years.map((y) => <option key={y.year} value={y.year}>{monthLabel(y.year)}</option>)}
+        </optgroup>
+      </select>
+      <button className={btn} disabled={!canNext} onClick={() => onGo(next)} title={`${unit} הבא: ${monthLabel(next)} (←)`}>
+        <span className="hidden sm:inline">{monthLabel(next, !isYear)}</span><span aria-hidden>«</span>
+        <span className="sr-only">{unit} הבא</span>
+      </button>
     </div>
   );
 }
