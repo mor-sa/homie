@@ -5,10 +5,14 @@ import { suggestCategories } from "./ai.js";
 const getRule = db.prepare("SELECT * FROM rules WHERE merchant_key = ?");
 const tripFor = db.prepare("SELECT * FROM trips WHERE ? BETWEEN start_date AND end_date ORDER BY start_date DESC LIMIT 1");
 
-export const categoryNames = () => db.prepare("SELECT name FROM categories ORDER BY sort, name").all().map((r) => r.name);
+// alphabetical (Hebrew-aware) so categories are easy to find in pickers
+const collator = new Intl.Collator("he", { sensitivity: "base", numeric: true });
+const byName = (a, b) => collator.compare(a.name, b.name);
+
+export const categoryNames = () => db.prepare("SELECT name FROM categories").all().sort(byName).map((r) => r.name);
 
 export function categoryTree() {
-  const subs = db.prepare("SELECT * FROM subcategories ORDER BY sort, name").all();
+  const subs = db.prepare("SELECT * FROM subcategories").all().sort(byName);
   return categoryNames().map((name) => ({ name, subs: subs.filter((s) => s.category === name).map((s) => s.name) }));
 }
 
