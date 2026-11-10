@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ils, monthLabel } from "../api.js";
-import { CategoryBars, ColumnChart, Donut, ListCard, Stat, txLabel } from "../components/charts.jsx";
+import { CategoryBars, ColumnChart, Donut, ListCard, Segmented, Stat, txLabel } from "../components/charts.jsx";
 
 const load = (k, d) => {
   try { return localStorage.getItem(k) ?? d; } catch { return d; }
@@ -13,13 +13,16 @@ export default function Dashboard({ month, onGo, onDrill }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const [trips, setTrips] = useState(() => load("dash.trips", "include"));
+  const [card, setCard] = useState(() => load("dash.card", ""));
   useEffect(() => {
     setD(null);
-    api.dashboard(month, trips).then(setD, (e) => setErr(e.message));
-  }, [month, trips]);
+    api.dashboard(month, trips, card).then(setD, (e) => setErr(e.message));
+  }, [month, trips, card]);
 
   const [yearMode, setYearMode] = useState(() => load("dash.yearMode", "avg"));
   const toggle = (v) => (setTrips(v), save("dash.trips", v));
+  const pickCard = (v) => (setCard(v), save("dash.card", v));
+
   const toggleYear = (v) => (setYearMode(v), save("dash.yearMode", v));
 
   if (err) return <p className="text-critical">{err}</p>;
@@ -41,27 +44,21 @@ export default function Dashboard({ month, onGo, onDrill }) {
   const delta = !isYear && d.kpis.prevTotal ? d.kpis.total / d.kpis.prevTotal - 1 : null;
   const unit = avg ? " לחודש" : "";
   // drill-down keeps the "without trips" choice
-  const drill = (f) => onDrill({ ...(trips === "exclude" ? { notrips: "1" } : {}), ...f });
+  const drill = (f) => onDrill({ ...(trips === "exclude" ? { notrips: "1" } : {}), ...(card ? { card } : {}), ...f });
+  const showTrips = trips === "include" && d.tripsInPeriod.length > 0;
+  const trendAvg = d.trend.length ? d.trend.reduce((x, t) => x + t.total, 0) / d.trend.length : 0;
   const pick = (category, sub) => drill({ category, sub });
 
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="text-xl font-bold">{monthLabel(month)}</h2>
-        <div className="flex rounded-lg border border-grid bg-surface p-0.5 text-sm" role="radiogroup" aria-label="טיולים">
-          {[["include", "כולל טיולים"], ["exclude", "בלי טיולים"]].map(([v, l]) => (
-            <button key={v} role="radio" aria-checked={trips === v} onClick={() => toggle(v)}
-              className={`rounded-md px-3 py-1 ${trips === v ? "bg-ink text-surface" : "text-ink-2"}`}>{l}</button>
-          ))}
-        </div>
-        {isYear && (
-          <div className="flex rounded-lg border border-grid bg-surface p-0.5 text-sm" role="radiogroup" aria-label="תצוגה שנתית">
-            {[["avg", "ממוצע לחודש"], ["total", "סה״כ שנתי"]].map(([v, l]) => (
-              <button key={v} role="radio" aria-checked={yearMode === v} onClick={() => toggleYear(v)}
-                className={`rounded-md px-3 py-1 ${yearMode === v ? "bg-ink text-surface" : "text-ink-2"}`}>{l}</button>
-            ))}
-          </div>
+        <Segmented label="טיולים" value={trips} onChange={toggle} options={[["include", "כולל טיולים"], ["exclude", "בלי טיולים"]]} />
+        {d.cards.length > 1 && (
+          <Segmented label="כרטיס" value={card} onChange={pickCard}
+            options={[["", "כל הכרטיסים"], ...d.cards.map((c) => [c.last4, c.owner === c.last4 ? `כרטיס ${c.last4}` : c.owner])]} />
         )}
+        {isYear && <Segmented label="תצוגה שנתית" value={yearMode} onChange={toggleYear} options={[["avg", "ממוצע לחודש"], ["total", "סה״כ שנתי"]]} />}
         {k.needsReview > 0 && (
           <button onClick={() => onGo("review")} className="ms-auto flex items-center gap-2 text-sm text-ink-2 hover:text-ink">
             <span className="num rounded-full bg-series-2 px-2 py-0.5 text-white">{k.needsReview}</span> מחכות לאישור
@@ -77,7 +74,7 @@ export default function Dashboard({ month, onGo, onDrill }) {
             </span>
           )} />
         <Stat onClick={() => drill({ fixed: "1" })} label={"הוצאות קבועות" + unit} value={ils(k.fixed)} sub={<span className="text-muted">משתנות: {ils(k.variable)}</span>} />
-        {k.byCard.map((c) => (
+        {!card && k.byCard.map((c) => (
           <Stat key={c.card} onClick={() => drill({ card: c.card })} label={`כרטיס ${c.owner}${unit}`} value={ils(c.total)}
             sub={<span className="num text-muted">{k.total ? Math.round((c.total / k.total) * 100) : 0}%</span>} />
         ))}
@@ -118,11 +115,12 @@ export default function Dashboard({ month, onGo, onDrill }) {
       </div>
 
       <section className="card p-4">
-        <h3 className="font-semibold">{d.period === "year" ? "לפי חודש" : "12 חודשים"}</h3>
-        <p className="mb-1 flex gap-4 text-xs text-muted">
+        <h3 className="font-semibold">{isYear ? "לפי חודש" : "12 חודשים"}</h3>
+        <p className="mb-1 flex flex-wrap gap-x-4 text-xs text-muted">
           <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-series-1" />שוטף</span>
           {trips === "include" && <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-series-2" />טיולים</span>}
-          <span>לחיצה על חודש פותחת אותו</span>
+          <span>לחיצה על חודש פותחת אותו · פילוחים נוספים בטאב </span>
+          <button className="-ms-4 text-series-1 hover:underline" onClick={() => onGo("graphs", month.slice(0, 4))}>גרפים</button>
         </p>
         <ColumnChart
           data={d.trend.map((t) => ({ ...t, regular: t.total - t.trip }))}
@@ -130,7 +128,7 @@ export default function Dashboard({ month, onGo, onDrill }) {
           labelOf={(t) => monthLabel(t.month, true)}
           highlight={(t) => t.month === month}
           onPick={(t) => onGo("dashboard", t.month)}
-          refLine={isYear && d.trend.length > 1 ? { value: d.trend.reduce((x, t) => x + t.total, 0) / d.trend.length, label: `ממוצע ${ils(d.trend.reduce((x, t) => x + t.total, 0) / d.trend.length)}` } : undefined}
+          refLine={isYear && d.trend.length > 1 ? { value: trendAvg, label: `ממוצע ${ils(trendAvg)}` } : undefined}
           tipOf={(t) => (
             <>
               <div className="font-medium">{monthLabel(t.month)}</div>
@@ -141,7 +139,14 @@ export default function Dashboard({ month, onGo, onDrill }) {
         />
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className={`grid gap-4 md:grid-cols-2 ${showTrips ? "xl:grid-cols-4" : "lg:grid-cols-3"}`}>
+        {showTrips && (
+          <ListCard title={isYear ? `טיולים ב־${month}` : "טיולים החודש"} rows={d.tripsInPeriod.map((t) => ({
+            key: t.id, main: t.name,
+            sub: `${t.start_date.slice(8, 10)}/${t.start_date.slice(5, 7)}–${t.end_date.slice(8, 10)}/${t.end_date.slice(5, 7)}` +
+              (isYear ? ` · ${Math.round((t.total / d.kpis.trip) * 100)}% מהוצאות הטיולים` : " · ההוצאות שנרשמו החודש"),
+            value: t.total, onClick: () => onGo("trips", String(t.id)) }))} />
+        )}
         <ListCard title="איפה הכי הרבה כסף" rows={d.topMerchants.map((m) => ({
           key: m.merchant, main: m.merchant, sub: `${m.count} עסקאות · ${m.category ?? "לא מסווג"}`, value: m.total, onClick: () => drill({ q: m.merchant }) }))} />
         <ListCard title="העסקאות הגדולות" rows={d.largest.map((t) => ({ key: t.id, main: t.note || t.merchant, sub: txLabel(t), value: t.amount, onClick: () => drill({ q: t.merchant }) }))} />

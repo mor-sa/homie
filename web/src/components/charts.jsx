@@ -201,3 +201,14 @@ export function Stat({ label, value, sub, onClick }) {
 }
 
 export const txLabel = (t) => `${dateLabel(t.purchase_date)} · ${t.category ?? "לא מסווג"}${t.subcategory ? " › " + t.subcategory : ""}`;
+
+export function Segmented({ label, value, options, onChange }) {
+  return (
+    <div className="flex rounded-lg border border-grid bg-surface p-0.5 text-sm" role="radiogroup" aria-label={label}>
+      {options.map(([v, l, disabled]) => (
+        <button key={v} role="radio" aria-checked={value === v} disabled={disabled} onClick={() => onChange(v)}
+          className={`rounded-md px-3 py-1 disabled:opacity-40 ${value === v ? "bg-ink text-surface" : "text-ink-2"}`}>{l}</button>
+      ))}
+    </div>
+  );
+}

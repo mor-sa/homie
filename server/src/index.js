@@ -51,7 +51,7 @@ app.post("/api/import", upload.single("file"), wrap(async (req) => {
 
 // ---------- dashboards ----------
 app.get("/api/dashboard", wrap((req) =>
-  dashboard(req.query.month ?? defaultMonth(), { excludeTrips: req.query.trips === "exclude" })));
+  dashboard(req.query.month ?? defaultMonth(), { excludeTrips: req.query.trips === "exclude", card: req.query.card || null })));
 app.get("/api/trips/:id/dashboard", wrap((req) => tripDashboard(Number(req.params.id))));
 
 // ---------- categories ----------

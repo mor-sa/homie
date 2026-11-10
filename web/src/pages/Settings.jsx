@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, dateLabel } from "../api.js";
+import { api } from "../api.js";
 import { Swatch } from "../components/charts.jsx";
 
 export default function Settings({ meta, onChanged }) {
@@ -86,9 +86,44 @@ function CategoryRow({ c, run }) {
   );
 }
 
+const fullDate = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : "");
+const tripDays = (s, e) => (s && e && e >= s ? Math.round((Date.parse(e) - Date.parse(s)) / 86400000) + 1 : null);
+
+// One form for adding and editing: labeled name, from-date and to-date, and the trip length as you type
+function TripForm({ initial, submitLabel, onSubmit, onCancel }) {
+  const [f, setF] = useState(initial);
+  const days = tripDays(f.start_date, f.end_date);
+  const bad = f.start_date && f.end_date && f.end_date < f.start_date;
+  const field = "rounded-lg border border-grid bg-surface px-3 py-1.5 text-sm";
+  return (
+    <form className="grid gap-2" onSubmit={(e) => (e.preventDefault(), !bad && onSubmit(f))}>
+      <label className="grid gap-1 text-xs text-ink-2">שם הטיול
+        <input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="למשל: יוון 2027" className={field} />
+      </label>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="grid gap-1 text-xs text-ink-2">מתאריך (יום היציאה)
+          <input required type="date" value={f.start_date} className={field}
+            onChange={(e) => setF({ ...f, start_date: e.target.value, end_date: f.end_date && f.end_date < e.target.value ? e.target.value : f.end_date })} />
+        </label>
+        <label className="grid gap-1 text-xs text-ink-2">עד תאריך (יום החזרה)
+          <input required type="date" value={f.end_date} min={f.start_date || undefined} onChange={(e) => setF({ ...f, end_date: e.target.value })} className={field} />
+        </label>
+      </div>
+      <p className={`text-xs ${bad ? "text-critical" : "text-muted"}`}>
+        {bad ? "תאריך החזרה לפני תאריך היציאה" : days ? `${fullDate(f.start_date)} עד ${fullDate(f.end_date)}: ${days} ימים` : "בחרי תאריך יציאה ותאריך חזרה"}
+      </p>
+      <div className="flex gap-2">
+        <button className="rounded-lg bg-ink px-3 py-1.5 text-sm text-surface">{submitLabel}</button>
+        {onCancel && <button type="button" onClick={onCancel} className="rounded-lg border border-grid px-3 py-1.5 text-sm">ביטול</button>}
+      </div>
+    </form>
+  );
+}
+
 function TripsEditor({ trips, run }) {
   const empty = { name: "", start_date: "", end_date: "" };
-  const [form, setForm] = useState(empty);
+  const [editing, setEditing] = useState(null);
+  const [formKey, setFormKey] = useState(0);
   return (
     <section className="card grid content-start gap-3 p-4">
       <h2 className="font-semibold">טיולים</h2>
@@ -97,33 +132,33 @@ function TripsEditor({ trips, run }) {
         חוץ מהוצאות קבועות. הזמנות ששולמו מראש מצמידים לטיול ידנית ממסך העסקאות.
       </p>
       <ul className="grid gap-2">
-        {trips.map((t) => (
+        {trips.map((t) => editing === t.id ? (
+          <li key={t.id} className="rounded-lg border border-grid p-3">
+            <TripForm initial={{ name: t.name, start_date: t.start_date, end_date: t.end_date }} submitLabel="שמירה"
+              onCancel={() => setEditing(null)}
+              onSubmit={(f) => (run(() => api.updateTrip(t.id, f), (r) => `עודכן. ${r.tagged} עסקאות בטיול.`), setEditing(null))} />
+          </li>
+        ) : (
           <li key={t.id} className="flex items-center justify-between gap-3 text-sm">
-            <span>{t.name} <span className="num text-muted">{dateLabel(t.start_date)}–{dateLabel(t.end_date)}</span></span>
-            <span className="flex gap-3 text-xs">
-              <button className="hover:underline" onClick={() => {
-                const s = prompt("תאריך התחלה (YYYY-MM-DD)", t.start_date);
-                const e = s && prompt("תאריך סיום (YYYY-MM-DD)", t.end_date);
-                if (s && e) run(() => api.updateTrip(t.id, { start_date: s, end_date: e }), (r) => `עודכן. ${r.tagged} עסקאות בטיול.`);
-              }}>תאריכים</button>
+            <span className="min-w-0">
+              <span className="block font-medium">{t.name}</span>
+              <span className="block text-xs text-muted">
+                מ־<span className="num">{fullDate(t.start_date)}</span> עד <span className="num">{fullDate(t.end_date)}</span> · {tripDays(t.start_date, t.end_date)} ימים
+              </span>
+            </span>
+            <span className="flex shrink-0 gap-3 text-xs">
+              <button className="hover:underline" onClick={() => setEditing(t.id)}>עריכה</button>
               <button className="text-critical hover:underline"
                 onClick={() => confirm(`למחוק את ${t.name}? העסקאות נשארות, רק התווית יורדת.`) && run(() => api.deleteTrip(t.id), "הטיול נמחק")}>מחיקה</button>
             </span>
           </li>
         ))}
       </ul>
-      <form className="grid gap-2 border-t border-grid pt-3"
-        onSubmit={(e) => (e.preventDefault(), run(() => api.addTrip(form), (r) => `הטיול נוסף, ${r.tagged} עסקאות תויגו.`), setForm(empty))}>
-        <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-          placeholder="שם, למשל: יוון 2027" className="rounded-lg border border-grid bg-surface px-3 py-1.5 text-sm" />
-        <div className="grid grid-cols-2 gap-2">
-          <input required type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })}
-            className="rounded-lg border border-grid bg-surface px-3 py-1.5 text-sm" aria-label="מתאריך" />
-          <input required type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })}
-            className="rounded-lg border border-grid bg-surface px-3 py-1.5 text-sm" aria-label="עד תאריך" />
-        </div>
-        <button className="rounded-lg bg-ink px-3 py-1.5 text-sm text-surface">הוספת טיול</button>
-      </form>
+      <div className="grid gap-2 border-t border-grid pt-3">
+        <h3 className="text-sm font-semibold">טיול חדש</h3>
+        <TripForm key={formKey} initial={empty} submitLabel="הוספת טיול"
+          onSubmit={(f) => (run(() => api.addTrip(f), (r) => `הטיול נוסף, ${r.tagged} עסקאות תויגו.`), setFormKey((k) => k + 1))} />
+      </div>
     </section>
   );
 }

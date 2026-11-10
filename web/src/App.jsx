@@ -4,10 +4,12 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Transactions from "./pages/Transactions.jsx";
 import Import from "./pages/Import.jsx";
 import Trips from "./pages/Trips.jsx";
+import Graphs from "./pages/Graphs.jsx";
 import Settings from "./pages/Settings.jsx";
 
 const TABS = [
   { id: "dashboard", label: "סקירה" },
+  { id: "graphs", label: "גרפים" },
   { id: "trips", label: "טיולים" },
   { id: "review", label: "לאישור" },
   { id: "transactions", label: "עסקאות" },
@@ -45,14 +47,15 @@ export default function App() {
   if (!meta) return <div className="p-8 text-muted">טוען…</div>;
 
   const isPeriod = (p) => /^\d{4}(-\d{2})?$/.test(p ?? "");
-  const period = isPeriod(param) ? param : meta.defaultMonth;
+  // the graphs tab opens on a year; the others on the last full month
+  const period = isPeriod(param) ? param : tab === "graphs" ? meta.defaultMonth.slice(0, 4) : meta.defaultMonth;
   const go = (t, p, f) => {
     const q = f ? new URLSearchParams(Object.entries(f).filter(([, v]) => v != null && v !== "")).toString() : "";
-    location.hash = `${t}/${p ?? (t === "dashboard" || t === "transactions" ? period : "")}${q ? "?" + q : ""}`;
+    location.hash = `${t}/${p ?? (t === "dashboard" || t === "transactions" ? period : t === "graphs" ? period.slice(0, 4) : "")}${q ? "?" + q : ""}`;
   };
   // drill-down from a chart: open the transactions page with these filters
   const drill = (f, p = period) => go("transactions", p, f);
-  const showPeriod = tab === "dashboard" || tab === "transactions";
+  const showPeriod = tab === "dashboard" || tab === "transactions" || tab === "graphs";
 
   return (
     <div className="min-h-screen">
@@ -84,6 +87,8 @@ export default function App() {
           </div>
         ) : tab === "dashboard" ? (
           <Dashboard key={period} month={period} onGo={go} onDrill={drill} />
+        ) : tab === "graphs" ? (
+          <Graphs key={period} period={period} onGo={go} onDrill={drill} />
         ) : tab === "trips" ? (
           <Trips meta={meta} tripId={param} onGo={go} onDrill={drill} onChanged={refreshMeta} />
         ) : tab === "review" ? (

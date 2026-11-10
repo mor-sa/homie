@@ -65,14 +65,16 @@ function merchantsOf(rows) {
 }
 
 // `month` is "YYYY-MM" for a month view or "YYYY" for a year view
-export function dashboard(month, { excludeTrips = false } = {}) {
+export function dashboard(month, { excludeTrips = false, card = null } = {}) {
   const isYear = /^\d{4}$/.test(month);
   const tripFilter = excludeTrips ? " AND trip_id IS NULL" : "";
-  const inMonth = db.prepare(`SELECT * FROM transactions WHERE ${POSTED}${tripFilter} AND purchase_date LIKE ? || '%'`);
-  const rows = inMonth.all(month);
+  const cardFilter = card ? " AND card = @card" : "";
+  const inMonth = db.prepare(`SELECT * FROM transactions WHERE ${POSTED}${tripFilter}${cardFilter} AND purchase_date LIKE @m || '%'`);
+  const q = (m) => inMonth.all(card ? { m, card } : { m });
+  const rows = q(month);
 
   const prevMonth = isYear ? String(Number(month) - 1) : shiftMonth(month, -1);
-  const prevRows = isYear ? [inMonth.all(prevMonth)] : [1, 2, 3].map((d) => inMonth.all(shiftMonth(month, -d)));
+  const prevRows = isYear ? [q(prevMonth)] : [1, 2, 3].map((d) => q(shiftMonth(month, -d)));
   const monthsWithData = prevRows.filter((r) => r.length).length || 1;
 
   const byCategory = categoryBreakdown(rows, {
@@ -87,16 +89,66 @@ export function dashboard(month, { excludeTrips = false } = {}) {
   const byCard = Object.entries(rows.reduce((a, r) => ((a[r.card ?? "?"] = (a[r.card ?? "?"] ?? 0) + r.amount), a), {}))
     .map(([card, t]) => ({ card, owner: own[card] ?? card, total: t }));
 
-  // 12-month trend (always computed with trips split out, so the bar can show both parts)
+  // 12-month trend (or the year's months). Each month carries its split by card, trip and category, so the
+  // chart can switch breakdowns without another request. Trips are always split out; excludeTrips zeroes them.
   const trendRows = db
+    .prepare(`SELECT * FROM transactions WHERE ${POSTED}${cardFilter} AND purchase_date >= @from AND purchase_date < @to`)
+    .all({
+      from: isYear ? `${month}-01-01` : shiftMonth(month, -11) + "-01",
+      to: isYear ? `${Number(month) + 1}-01-01` : shiftMonth(month, 1) + "-01",
+      ...(card ? { card } : {}),
+    });
+  const byMonth = {};
+  for (const r of trendRows) {
+    if (excludeTrips && r.trip_id) continue;
+    const t = (byMonth[r.purchase_date.slice(0, 7)] ??= { month: r.purchase_date.slice(0, 7), total: 0, trip: 0, fixed: 0, count: 0, cards: {}, trips: {}, cats: {} });
+    t.total += r.amount;
+    t.count++;
+    if (r.is_fixed) t.fixed += r.amount;
+    if (r.trip_id) {
+      t.trip += r.amount;
+      t.trips[r.trip_id] = (t.trips[r.trip_id] ?? 0) + r.amount;
+    }
+    const c = r.card ?? "?";
+    t.cards[c] = (t.cards[c] ?? 0) + r.amount;
+    const cat = r.category ?? UNCAT;
+    t.cats[cat] = (t.cats[cat] ?? 0) + r.amount;
+  }
+  const trend = Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month));
+
+  // trips with spending in this period (a trip's bookings can fall in earlier months)
+  const tripTotals = rows.filter((r) => r.trip_id).reduce((a, r) => ((a[r.trip_id] = (a[r.trip_id] ?? 0) + r.amount), a), {});
+  const allTrips = db.prepare("SELECT id, name, start_date, end_date FROM trips ORDER BY start_date").all();
+  const tripsInPeriod = allTrips
+    .filter((t) => tripTotals[t.id])
+    .map((t) => ({ ...t, total: tripTotals[t.id] }))
+    .sort((a, b) => b.total - a.total);
+  const trendTrips = allTrips.filter((t) => trend.some((m) => m.trips[t.id]));
+
+  // who pays for what: each category split by card
+  const catByCard = Object.values(
+    rows.reduce((a, r) => {
+      const c = r.category ?? UNCAT;
+      const x = (a[c] ??= { category: c, total: 0, cards: {} });
+      x.total += r.amount;
+      x.cards[r.card ?? "?"] = (x.cards[r.card ?? "?"] ?? 0) + r.amount;
+      return a;
+    }, {}),
+  ).filter((x) => x.total > 0.5).sort((a, b) => b.total - a.total);
+
+  // every trip, whole-trip totals (for comparing trips; same card filter as the rest)
+  const tripsCompare = db
     .prepare(
-      `SELECT substr(purchase_date,1,7) AS month, SUM(amount) AS total,
-              SUM(CASE WHEN trip_id IS NOT NULL THEN amount ELSE 0 END) AS trip
-       FROM transactions WHERE ${POSTED} AND purchase_date >= ? AND purchase_date < ?
-       GROUP BY month ORDER BY month`,
+      `SELECT t.id, t.name, t.start_date, t.end_date, IFNULL(SUM(x.amount),0) AS total
+       FROM trips t LEFT JOIN transactions x ON x.trip_id = t.id AND x.status='posted' AND x.amount IS NOT NULL
+         ${card ? "AND x.card = @card" : ""}
+       GROUP BY t.id ORDER BY t.start_date`,
     )
-    .all(isYear ? `${month}-01-01` : shiftMonth(month, -11) + "-01", isYear ? `${Number(month) + 1}-01-01` : shiftMonth(month, 1) + "-01");
-  const trend = trendRows.map((t) => (excludeTrips ? { ...t, total: t.total - t.trip, trip: 0 } : t));
+    .all(card ? { card } : {})
+    .map((t) => {
+      const days = Math.round((Date.parse(t.end_date) - Date.parse(t.start_date)) / 86400000) + 1;
+      return { ...t, days, perDay: t.total / days };
+    });
 
   const merchants = merchantsOf(rows);
   const topMerchants = [...merchants].sort((a, b) => b.total - a.total).slice(0, 8);
@@ -171,22 +223,24 @@ export function dashboard(month, { excludeTrips = false } = {}) {
   const subscriptions = db
     .prepare(
       `SELECT MAX(merchant) AS merchant, category, SUM(amount) AS total FROM transactions
-       WHERE ${POSTED} AND is_fixed = 1 AND purchase_date LIKE ? || '%' GROUP BY merchant_key ORDER BY total DESC`,
+       WHERE ${POSTED}${cardFilter} AND is_fixed = 1 AND purchase_date LIKE @m || '%' GROUP BY merchant_key ORDER BY total DESC`,
     )
-    .all(month);
+    .all(card ? { m: month, card } : { m: month });
 
   return {
     month,
     period: isYear ? "year" : "month",
     prevMonth,
     monthsInPeriod: isYear ? trend.length : 1,
+    prevMonthsInPeriod: isYear ? new Set(prevRows[0].map((r) => r.purchase_date.slice(0, 7))).size : 1,
     excludeTrips,
     kpis: {
       total, fixed, variable: total - fixed, trip, count: rows.length,
       prevTotal: sum(prevRows[0]), avg3Total: avgTotal, byCard,
       needsReview: db.prepare("SELECT COUNT(*) AS n FROM transactions WHERE needs_review = 1 AND status = 'posted'").get().n,
     },
-    byCategory, trend, topMerchants, largest, weekday, subscriptions, insights,
+    byCategory, trend, trendTrips, tripsInPeriod, catByCard, tripsCompare, topMerchants, largest, weekday, subscriptions, insights,
+    card, cards: Object.entries(own).map(([last4, owner]) => ({ last4, owner })),
   };
 }
 

@@ -11,6 +11,12 @@
   --color-axis: #c3c2b7;
   --color-series-1: #2a78d6;
   --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  --color-series-4: #eda100;
+  --color-series-5: #e87ba4;
+  --color-series-6: #008300;
+  --color-series-7: #6250d6;
+  --color-series-8: #e34948;
   --color-good: #006300;
   --color-warn: #b45309;
   --color-critical: #d03b3b;
@@ -26,6 +32,12 @@
     --color-axis: #383835;
     --color-series-1: #3987e5;
     --color-series-2: #d95926;
+    --color-series-3: #199e70;
+    --color-series-4: #c98500;
+    --color-series-5: #d55181;
+    --color-series-6: #008300;
+    --color-series-7: #9085e9;
+    --color-series-8: #e66767;
     --color-good: #0ca30c;
     --color-warn: #fab219;
   }

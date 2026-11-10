@@ -8,7 +8,7 @@ const json = (method, body) => ({ method, headers: { "Content-Type": "applicatio
 
 export const api = {
   meta: () => req("/meta"),
-  dashboard: (month, trips = "include") => req(`/dashboard?month=${month}&trips=${trips}`),
+  dashboard: (month, trips = "include", card = "") => req(`/dashboard?month=${month}&trips=${trips}${card ? `&card=${card}` : ""}`),
   tripDashboard: (id) => req(`/trips/${id}/dashboard`),
   updateTrip: (id, t) => req(`/trips/${id}`, json("PATCH", t)),
   aiSuggest: () => req("/review/ai-suggest", { method: "POST" }),
