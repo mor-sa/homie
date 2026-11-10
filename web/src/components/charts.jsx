@@ -86,7 +86,7 @@ export function CategoryBars({ rows, compareKey, compareLabel, total, onPick }) 
 }
 
 /** Donut in category colors, like the pie in the original sheet. Small slices fold into "אחר". */
-export function Donut({ rows, size = 180, onPick }) {
+export function Donut({ rows, size = 180, onPick, centerLabel = "סה״כ" }) {
   const [hover, setHover] = useState(null);
   const positive = rows.filter((r) => r.total > 0);
   const total = positive.reduce((a, r) => a + r.total, 0);
@@ -122,7 +122,7 @@ export function Donut({ rows, size = 180, onPick }) {
         ))}
       </svg>
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-        <span className="max-w-[5.5rem] truncate text-[11px] text-ink-2">{h ? h.category : "סה״כ"}</span>
+        <span className="max-w-[5.5rem] truncate text-[11px] text-ink-2">{h ? h.category : centerLabel}</span>
         <span className="num text-sm font-semibold">{ils(h ? h.total : total)}</span>
         {h && <span className="num text-[11px] text-muted">{Math.round((h.total / total) * 100)}%</span>}
       </div>

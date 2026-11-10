@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { api, ils, monthLabel } from "../api.js";
 import { ColumnChart, Donut, Segmented, Swatch } from "../components/charts.jsx";
 
@@ -8,6 +8,8 @@ const load = (k, d) => {
 const save = (k, v) => {
   try { localStorage.setItem(k, v); } catch { /* private mode */ }
 };
+// "סה״כ" or "ממוצע לחודש" in the middle of every pie
+const PieLabel = createContext("סה״כ");
 const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 
 const CAT_SLOTS = [1, 3, 4, 5, 7, 8, 6].map((i) => `var(--color-series-${i})`);
@@ -85,6 +87,7 @@ export default function Graphs({ period, onGo, onDrill }) {
   const [trips, setTrips] = useState(() => load("dash.trips", "include"));
   const [card, setCard] = useState(() => load("dash.card", ""));
   const [by, setBy] = useState(() => load("graphs.by", "category"));
+  const [yearMode, setYearMode] = useState(() => load("dash.yearMode", "avg"));
   const [tripMeasure, setTripMeasure] = useState(() => load("graphs.tripMeasure", "total"));
   useEffect(() => {
     setD(null);
@@ -95,6 +98,21 @@ export default function Graphs({ period, onGo, onDrill }) {
   if (!d) return <p className="text-muted">טוען…</p>;
 
   const isYear = d.period === "year";
+  // Year view as a monthly average: every amount divided by the months that have data (shares don't change)
+  const avg = isYear && yearMode === "avg";
+  const n = avg ? Math.max(d.monthsInPeriod, 1) : 1;
+  const div = (x) => x / n;
+  const scaleCats = (list) => list.map((c) => ({ ...c, total: div(c.total), subs: c.subs.map((s) => ({ ...s, total: div(s.total) })) }));
+  const ds = avg ? {
+    ...d,
+    kpis: { ...d.kpis, total: div(d.kpis.total), fixed: div(d.kpis.fixed), variable: div(d.kpis.variable), trip: div(d.kpis.trip),
+      byCard: d.kpis.byCard.map((c) => ({ ...c, total: div(c.total) })) },
+    byCategory: scaleCats(d.byCategory),
+    byCategoryNoTrips: scaleCats(d.byCategoryNoTrips),
+    tripsInPeriod: d.tripsInPeriod.map((t) => ({ ...t, total: div(t.total) })),
+    weekday: d.weekday.map(div),
+  } : d;
+  const monthAvg = d.trend.length ? d.trend.reduce((x, t) => x + t.total, 0) / d.trend.length : 0;
   const owners = Object.fromEntries(d.cards.map((c) => [c.last4, c.owner]));
   const cardColor = Object.fromEntries([...d.cards].sort((a, b) => a.last4.localeCompare(b.last4)).map((c, i) => [c.last4, CAT_SLOTS[i % CAT_SLOTS.length]]));
   const breakdown = by === "trip" && trips === "exclude" ? "type" : by;
@@ -112,6 +130,11 @@ export default function Graphs({ period, onGo, onDrill }) {
           <Segmented label="כרטיס" value={card} onChange={set(setCard, "dash.card")}
             options={[["", "כל הכרטיסים"], ...d.cards.map((c) => [c.last4, c.owner === c.last4 ? `כרטיס ${c.last4}` : c.owner])]} />
         )}
+        {isYear && (
+          <Segmented label="תצוגה שנתית" value={yearMode} onChange={set(setYearMode, "dash.yearMode")}
+            options={[["avg", "ממוצע לחודש"], ["total", "סה״כ שנתי"]]} />
+        )}
+        {avg && <span className="text-xs text-muted">הסכומים בעוגות מחולקים ב־{d.monthsInPeriod} חודשים עם נתונים</span>}
       </div>
 
       <section className="card p-4">
@@ -126,6 +149,7 @@ export default function Graphs({ period, onGo, onDrill }) {
           series={chart.series}
           labelOf={(t) => monthLabel(t.month, true)}
           onPick={(t) => onGo("dashboard", t.month)}
+          refLine={isYear && d.trend.length > 1 ? { value: monthAvg, label: `ממוצע ${ils(monthAvg)}` } : undefined}
           tipOf={(t) => {
             const parts = chart.series.map((s) => [s.label, t[s.key] ?? 0]).filter(([, v]) => Math.abs(v) > 0.5).sort((a, b) => b[1] - a[1]);
             return (
@@ -143,7 +167,9 @@ export default function Graphs({ period, onGo, onDrill }) {
         />
       </section>
 
-      <Pies d={d} owners={owners} cardColor={cardColor} trips={trips} card={card} drill={drill} onGo={onGo} />
+      <PieLabel.Provider value={avg ? "ממוצע לחודש" : "סה״כ"}>
+        <Pies d={ds} owners={owners} cardColor={cardColor} trips={trips} card={card} drill={drill} onGo={onGo} />
+      </PieLabel.Provider>
 
       <Changes d={d} isYear={isYear} onPick={(category) => drill({ category })} />
 
@@ -162,6 +188,7 @@ export default function Graphs({ period, onGo, onDrill }) {
 
 // A pie with its legend: label, amount and share. Clicking a slice or a legend row runs that row's action.
 function PieCard({ title, note, rows, extra, size = 150 }) {
+  const centerLabel = useContext(PieLabel);
   const total = rows.reduce((a, r) => a + Math.max(r.total, 0), 0);
   const byLabel = Object.fromEntries(rows.map((r) => [r.category, r]));
   return (
@@ -169,7 +196,7 @@ function PieCard({ title, note, rows, extra, size = 150 }) {
       <h3 className="font-semibold">{title}</h3>
       {note && <p className="text-xs text-muted">{note}</p>}
       {extra}
-      <div className="mt-3"><Donut rows={rows} size={size} onPick={(label) => byLabel[label === "__none" ? "לא מסווג" : label]?.onPick?.()} /></div>
+      <div className="mt-3"><Donut rows={rows} size={size} centerLabel={centerLabel} onPick={(label) => byLabel[label === "__none" ? "לא מסווג" : label]?.onPick?.()} /></div>
       <ul className={`mt-3 grid gap-x-4 gap-y-1 text-sm ${rows.length > 8 ? "sm:grid-cols-2" : ""}`}>
         {rows.filter((r) => r.total > 0).map((r) => (
           <li key={r.category}>
