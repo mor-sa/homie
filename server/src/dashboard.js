@@ -239,7 +239,7 @@ export function dashboard(month, { excludeTrips = false, card = null } = {}) {
       prevTotal: sum(prevRows[0]), avg3Total: avgTotal, byCard,
       needsReview: db.prepare("SELECT COUNT(*) AS n FROM transactions WHERE needs_review = 1 AND status = 'posted'").get().n,
     },
-    byCategory, trend, trendTrips, tripsInPeriod, catByCard, tripsCompare, topMerchants, largest, weekday, subscriptions, insights,
+    byCategory, byCategoryNoTrips: categoryBreakdown(rows.filter((r) => !r.trip_id)), trend, trendTrips, tripsInPeriod, catByCard, tripsCompare, topMerchants, largest, weekday, subscriptions, insights,
     card, cards: Object.entries(own).map(([last4, owner]) => ({ last4, owner })),
   };
 }

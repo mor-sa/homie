@@ -161,7 +161,7 @@ export default function Graphs({ period, onGo, onDrill }) {
 }
 
 // A pie with its legend: label, amount and share. Clicking a slice or a legend row runs that row's action.
-function PieCard({ title, note, rows, extra }) {
+function PieCard({ title, note, rows, extra, size = 150 }) {
   const total = rows.reduce((a, r) => a + Math.max(r.total, 0), 0);
   const byLabel = Object.fromEntries(rows.map((r) => [r.category, r]));
   return (
@@ -169,8 +169,8 @@ function PieCard({ title, note, rows, extra }) {
       <h3 className="font-semibold">{title}</h3>
       {note && <p className="text-xs text-muted">{note}</p>}
       {extra}
-      <div className="mt-3"><Donut rows={rows} size={150} onPick={(label) => byLabel[label === "__none" ? "לא מסווג" : label]?.onPick?.()} /></div>
-      <ul className="mt-3 grid gap-1 text-sm">
+      <div className="mt-3"><Donut rows={rows} size={size} onPick={(label) => byLabel[label === "__none" ? "לא מסווג" : label]?.onPick?.()} /></div>
+      <ul className={`mt-3 grid gap-x-4 gap-y-1 text-sm ${rows.length > 8 ? "sm:grid-cols-2" : ""}`}>
         {rows.filter((r) => r.total > 0).map((r) => (
           <li key={r.category}>
             <button onClick={r.onPick} disabled={!r.onPick} className="flex w-full items-center gap-2 rounded px-1 text-start enabled:hover:bg-grid/40">
@@ -228,7 +228,27 @@ function Pies({ d, owners, cardColor, trips, card, drill, onGo }) {
       </select>
     } />);
 
-  return <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{pies}</div>;
+  // the two big category pies: trips folded into one slice, and every expense in its own category
+  const catRows = (list) => list.filter((c) => c.total > 0).map((c) => ({
+    category: c.category, color: c.color, total: c.total,
+    onPick: () => drill({ category: c.category === "לא מסווג" ? "__none" : c.category, ...(list === d.byCategoryNoTrips ? { notrips: "1" } : {}) }),
+  }));
+  const foldTrips = trips === "include" && k.trip > 0;
+
+  return (
+    <div className="grid gap-4">
+      <div className={`grid gap-4 ${foldTrips ? "md:grid-cols-2" : ""}`}>
+        {foldTrips && (
+          <PieCard size={220} title="קטגוריות, הטיולים כפרוסה אחת" note="כל ההוצאות בטיולים מאוגדות יחד"
+            rows={[...catRows(d.byCategoryNoTrips), { category: "טיולים", color: "var(--color-series-2)", total: k.trip, onPick: () => onGo("trips") }]
+              .sort((a, b) => b.total - a.total)} />
+        )}
+        <PieCard size={220} title="לפי קטגוריות" note={foldTrips ? "גם הוצאות הטיולים מחולקות לקטגוריות שלהן" : undefined}
+          rows={catRows(d.byCategory)} />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{pies}</div>
+    </div>
+  );
 }
 
 // Sub-categories as shades of the category's own color (one hue, light to dark by size)
