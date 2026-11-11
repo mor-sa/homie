@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, ils, dateLabel } from "../api.js";
-import { CategoryBars, ColumnChart, Donut, ListCard, Stat, txLabel } from "../components/charts.jsx";
+import { CategoryBars, ColumnChart, Donut, ListCard, Stat, txLabel, withHidden } from "../components/charts.jsx";
+import { useHidden } from "../hidden.js";
 
 export default function Trips({ meta, tripId, onGo, onDrill, onChanged }) {
   const trips = meta.trips;
@@ -8,12 +9,15 @@ export default function Trips({ meta, tripId, onGo, onDrill, onChanged }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
 
-  const reload = () => api.tripDashboard(id).then(setD, (e) => setErr(e.message));
+  const hiding = useHidden("trips");
+  const hiddenKey = hiding.hidden.join(",");
+  const reload = () => api.tripDashboard(id, hiding.hidden).then(setD, (e) => setErr(e.message));
   useEffect(() => {
-    setD(null);
     setErr(null);
     if (id) reload();
-  }, [id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, hiddenKey]);
+  useEffect(() => setD(null), [id]);
 
   return (
     <div className="grid gap-4">
@@ -30,12 +34,12 @@ export default function Trips({ meta, tripId, onGo, onDrill, onChanged }) {
       {!id && <p className="card p-8 text-center text-ink-2">עוד אין טיולים. מוסיפים טיול בהגדרות, וכל ההוצאות בתאריכים שלו מתויגות אליו.</p>}
       {err && <p className="text-critical">{err}</p>}
       {id && !d && !err && <p className="text-muted">טוען…</p>}
-      {d && <TripView d={d} onGo={onGo} onDrill={(f) => onDrill({ trip: String(id), ...f })} onReload={async () => { await reload(); onChanged(); }} />}
+      {d && <TripView d={d} hiding={hiding} onGo={onGo} onDrill={(f) => onDrill({ trip: String(id), ...f })} onReload={async () => { await reload(); onChanged(); }} />}
     </div>
   );
 }
 
-function TripView({ d, onGo, onDrill, onReload }) {
+function TripView({ d, hiding, onGo, onDrill, onReload }) {
   const t = d.trip;
   return (
     <>
@@ -62,8 +66,12 @@ function TripView({ d, onGo, onDrill, onReload }) {
       <div className="grid gap-4 lg:grid-cols-5">
         <section className="card p-4 lg:col-span-3">
           <h3 className="font-semibold">לפי קטגוריה</h3>
-          <p className="mb-3 text-xs text-muted">לחיצה על קטגוריה מציגה תתי־קטגוריות</p>
-          <CategoryBars rows={d.byCategory} total={d.total} onPick={(category, sub) => onDrill({ category, sub })} />
+          <p className="mb-3 flex flex-wrap gap-x-3 text-xs text-muted">
+            <span>לחיצה על קטגוריה מציגה תתי־קטגוריות · העין מסתירה קטגוריה מהסכומים של הטיולים</span>
+            {d.hidden.length > 1 && <button onClick={hiding.showAll} className="text-series-1 hover:underline">להחזיר את כל המוסתרות</button>}
+          </p>
+          <CategoryBars rows={withHidden(d.byCategory, d.hidden)} total={d.total} onPick={(category, sub) => onDrill({ category, sub })}
+            onHide={hiding.hide} onShow={hiding.show} />
         </section>
         <section className="card p-4 lg:col-span-2">
           <h3 className="mb-3 font-semibold">התפלגות</h3>
@@ -96,7 +104,8 @@ function TripView({ d, onGo, onDrill, onReload }) {
           key: m.merchant, main: m.merchant, sub: `${m.count} עסקאות · ${m.category ?? "לא מסווג"}`, value: m.total, onClick: () => onDrill({ q: m.merchant }) }))} />
         <ListCard title="העסקאות הגדולות" rows={d.largest.map((x) => ({ key: x.id, main: x.note || x.merchant, sub: txLabel(x), value: x.amount }))} />
         <section className="card p-4">
-          <h3 className="mb-3 font-semibold">השוואה בין טיולים</h3>
+          <h3 className={d.hidden.length ? "font-semibold" : "mb-3 font-semibold"}>השוואה בין טיולים</h3>
+          {d.hidden.length > 0 && <p className="mb-3 text-xs text-muted">בלי {d.hidden.map((h) => h.category).join(", ")}</p>}
           <table className="w-full text-sm">
             <thead className="text-xs text-muted"><tr><th className="text-start font-medium">טיול</th><th className="text-end font-medium">סה״כ</th><th className="text-end font-medium">ליום</th></tr></thead>
             <tbody>

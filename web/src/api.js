@@ -10,7 +10,7 @@ export const api = {
   meta: () => req("/meta"),
   dashboard: (month, trips = "include", card = "", hide = []) =>
     req(`/dashboard?month=${month}&trips=${trips}${card ? `&card=${card}` : ""}${hide.length ? `&hide=${encodeURIComponent(hide.join(","))}` : ""}`),
-  tripDashboard: (id) => req(`/trips/${id}/dashboard`),
+  tripDashboard: (id, hide = []) => req(`/trips/${id}/dashboard${hide.length ? `?hide=${encodeURIComponent(hide.join(","))}` : ""}`),
   updateTrip: (id, t) => req(`/trips/${id}`, json("PATCH", t)),
   aiSuggest: () => req("/review/ai-suggest", { method: "POST" }),
   addCategory: (c) => req("/categories", json("POST", c)),

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ils, monthLabel } from "../api.js";
-import { CategoryBars, ColumnChart, Donut, HiddenBar, ListCard, Segmented, Stat, txLabel } from "../components/charts.jsx";
+import { CategoryBars, ColumnChart, Donut, ListCard, Segmented, Stat, txLabel, withHidden } from "../components/charts.jsx";
 import { useHidden } from "../hidden.js";
 
 const load = (k, d) => {
@@ -70,8 +70,6 @@ export default function Dashboard({ month, onGo, onDrill }) {
         )}
       </div>
 
-      <HiddenBar hidden={d.hidden} onShow={show} onShowAll={showAll} />
-
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label={avg ? "ממוצע לחודש" : "סה״כ"} value={ils(k.total)}
           sub={avg ? <span className="text-muted">{d.monthsInPeriod} חודשים עם נתונים · סה״כ {ils(d.kpis.total)}</span> : delta != null && (
@@ -92,9 +90,10 @@ export default function Dashboard({ month, onGo, onDrill }) {
           <p className="mb-3 flex flex-wrap gap-x-4 text-xs text-muted">
             {hasCompare && <span>הפס הצבעוני: {monthLabel(month)}</span>}
             {hasCompare && <span className="flex items-center gap-1.5"><span className="inline-block h-1.5 w-4 rounded-sm bg-axis" />{monthLabel(d.prevMonth)}</span>}
-            <span>לחיצה על קטגוריה מציגה תתי־קטגוריות · העין מסתירה קטגוריה</span>
+            <span>לחיצה על קטגוריה מציגה תתי־קטגוריות · העין מסתירה קטגוריה מהגרפים ומהסכומים</span>
+            {d.hidden.length > 1 && <button onClick={showAll} className="text-series-1 hover:underline">להחזיר את כל המוסתרות</button>}
           </p>
-          <CategoryBars rows={byCategory} compareKey={hasCompare ? "prev" : undefined} compareLabel={monthLabel(d.prevMonth)}
+          <CategoryBars rows={withHidden(byCategory, d.hidden.map((h) => ({ ...h, total: h.total / n })))} onShow={show} compareKey={hasCompare ? "prev" : undefined} compareLabel={monthLabel(d.prevMonth)}
             total={isYear ? k.total : undefined} onPick={pick} onHide={hide} />
         </section>
         <div className="grid gap-4 lg:col-span-2">

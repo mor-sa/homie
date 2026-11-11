@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { api, ils, monthLabel } from "../api.js";
-import { ColumnChart, Donut, HiddenBar, HideButton, Segmented, Swatch } from "../components/charts.jsx";
+import { ColumnChart, Donut, HideButton, Segmented, Swatch } from "../components/charts.jsx";
 import { useHidden } from "../hidden.js";
 
 const load = (k, d) => {
@@ -115,6 +115,7 @@ export default function Graphs({ period, onGo, onDrill }) {
     byCategoryNoTrips: scaleCats(d.byCategoryNoTrips),
     tripsInPeriod: d.tripsInPeriod.map((t) => ({ ...t, total: div(t.total) })),
     weekday: d.weekday.map(div),
+    hidden: d.hidden.map((h) => ({ ...h, total: div(h.total) })),
   } : d;
   const monthAvg = d.trend.length ? d.trend.reduce((x, t) => x + t.total, 0) / d.trend.length : 0;
   const owners = Object.fromEntries(d.cards.map((c) => [c.last4, c.owner]));
@@ -141,7 +142,12 @@ export default function Graphs({ period, onGo, onDrill }) {
         {avg && <span className="text-xs text-muted">הסכומים בעוגות מחולקים ב־{d.monthsInPeriod} חודשים עם נתונים</span>}
       </div>
 
-      <HiddenBar hidden={d.hidden} onShow={show} onShowAll={showAll} />
+      {d.hidden.length > 0 && (
+        <p className="-mt-2 text-xs text-muted">
+          {d.hidden.length === 1 ? `${d.hidden[0].category} מוסתרת מהגרפים ומהסכומים (מופיעה באפור)` : `${d.hidden.length} קטגוריות מוסתרות מהגרפים ומהסכומים (מופיעות באפור)`}
+          {" · "}<button onClick={showAll} className="text-series-1 hover:underline">להחזיר הכל</button>
+        </p>
+      )}
 
       <section className="card p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -174,12 +180,12 @@ export default function Graphs({ period, onGo, onDrill }) {
       </section>
 
       <PieLabel.Provider value={avg ? "ממוצע לחודש" : "סה״כ"}>
-        <Pies d={ds} onHide={hide} owners={owners} cardColor={cardColor} trips={trips} card={card} drill={drill} onGo={onGo} />
+        <Pies d={ds} onHide={hide} onShow={show} owners={owners} cardColor={cardColor} trips={trips} card={card} drill={drill} onGo={onGo} />
       </PieLabel.Provider>
 
       <Changes d={d} isYear={isYear} onPick={(category) => drill({ category })} />
 
-      <CategoryMultiples d={d} onHide={hide} onPick={(category, month) => drill({ category }, month)} />
+      <CategoryMultiples d={d} onHide={hide} onShow={show} onPick={(category, month) => drill({ category }, month)} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         {!card && d.cards.length > 1 && <WhoPays d={d} owners={owners} cardColor={cardColor} onPick={(category, c) => drill({ category, card: c })} />}
@@ -195,16 +201,26 @@ export default function Graphs({ period, onGo, onDrill }) {
 // A pie with its legend: label, amount and share. Clicking a slice or a legend row runs that row's action.
 function PieCard({ title, note, rows, extra, size = 150 }) {
   const centerLabel = useContext(PieLabel);
-  const total = rows.reduce((a, r) => a + Math.max(r.total, 0), 0);
-  const byLabel = Object.fromEntries(rows.map((r) => [r.category, r]));
+  const shown = rows.filter((r) => !r.hidden);
+  const total = shown.reduce((a, r) => a + Math.max(r.total, 0), 0);
+  const byLabel = Object.fromEntries(shown.map((r) => [r.category, r]));
   return (
     <section className="card p-4">
       <h3 className="font-semibold">{title}</h3>
       {note && <p className="text-xs text-muted">{note}</p>}
       {extra}
-      <div className="mt-3"><Donut rows={rows} size={size} centerLabel={centerLabel} onPick={(label) => byLabel[label === "__none" ? "לא מסווג" : label]?.onPick?.()} /></div>
+      <div className="mt-3"><Donut rows={shown} size={size} centerLabel={centerLabel} onPick={(label) => byLabel[label === "__none" ? "לא מסווג" : label]?.onPick?.()} /></div>
       <ul className={`mt-3 grid gap-x-4 gap-y-1 text-sm ${rows.length > 8 ? "sm:grid-cols-2" : ""}`}>
-        {rows.filter((r) => r.total > 0).map((r) => (
+        {rows.filter((r) => r.total > 0).sort((a, b) => b.total - a.total).map((r) => r.hidden ? (
+          <li key={r.category} className="flex items-center text-muted" title={`${r.category} מוסתרת`}>
+            <span className="flex min-w-0 flex-1 items-center gap-2 px-1">
+              <span className="opacity-40"><Swatch color={r.color} /></span>
+              <span className="min-w-0 flex-1 truncate line-through decoration-1">{r.category}</span>
+              <span className="num">{ils(r.total)}</span><span className="w-9" />
+            </span>
+            <HideButton off category={r.category} onHide={r.onShow} className="py-0" />
+          </li>
+        ) : (
           <li key={r.category} className="flex items-center">
             <button onClick={r.onPick} disabled={!r.onPick} className="flex min-w-0 flex-1 items-center gap-2 rounded px-1 text-start enabled:hover:bg-grid/40">
               <Swatch color={r.color} /><span className="min-w-0 flex-1 truncate">{r.category}</span>
@@ -219,7 +235,7 @@ function PieCard({ title, note, rows, extra, size = 150 }) {
   );
 }
 
-function Pies({ d, onHide, owners, cardColor, trips, card, drill, onGo }) {
+function Pies({ d, onHide, onShow, owners, cardColor, trips, card, drill, onGo }) {
   const k = d.kpis;
   const [subCat, setSubCat] = useState(() => load("graphs.subCat", ""));
   const withSubs = d.byCategory.filter((c) => c.subs.length > 0 && c.total > 0);
@@ -263,10 +279,13 @@ function Pies({ d, onHide, owners, cardColor, trips, card, drill, onGo }) {
     } />);
 
   // the two big category pies: trips folded into one slice, and every expense in its own category
-  const catRows = (list) => list.filter((c) => c.total > 0).map((c) => ({
-    category: c.category, color: c.color, total: c.total, onHide,
-    onPick: () => drill({ category: c.category === "לא מסווג" ? "__none" : c.category, ...(list === d.byCategoryNoTrips ? { notrips: "1" } : {}) }),
-  }));
+  const catRows = (list) => [
+    ...list.filter((c) => c.total > 0).map((c) => ({
+      category: c.category, color: c.color, total: c.total, onHide,
+      onPick: () => drill({ category: c.category === "לא מסווג" ? "__none" : c.category, ...(list === d.byCategoryNoTrips ? { notrips: "1" } : {}) }),
+    })),
+    ...d.hidden.map((h) => ({ ...h, hidden: true, onShow })),
+  ];
   const foldTrips = trips === "include" && k.trip > 0;
 
   return (
@@ -375,11 +394,12 @@ function Changes({ d, isYear, onPick }) {
 }
 
 // Small multiples: one mini column chart per category, all on the same scale so heights compare honestly
-function CategoryMultiples({ d, onHide, onPick }) {
+function CategoryMultiples({ d, onHide, onShow, onPick }) {
   const [shared, setShared] = useState(() => load("graphs.sharedScale", "own") === "shared");
   const months = d.trend.map((t) => t.month);
-  const cats = d.byCategory.filter((c) => c.total > 0).slice(0, 12);
-  const globalMax = Math.max(...cats.flatMap((c) => months.map((m, i) => d.trend[i].cats[c.category] ?? 0)), 1);
+  const cats = [...d.byCategory.filter((c) => c.total > 0).slice(0, 12), ...d.hidden.map((h) => ({ ...h, hidden: true }))]
+    .sort((a, b) => b.total - a.total);
+  const globalMax = Math.max(...cats.filter((c) => !c.hidden).flatMap((c) => months.map((m, i) => d.trend[i].cats[c.category] ?? 0)), 1);
   return (
     <section className="card p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -392,6 +412,15 @@ function CategoryMultiples({ d, onHide, onPick }) {
       </p>
       <div className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3 lg:grid-cols-4">
         {cats.map((c) => {
+          if (c.hidden) return (
+            <div key={c.category} className="text-muted">
+              <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
+                <span className="flex items-center gap-1.5 truncate"><span className="opacity-40"><Swatch color={c.color} /></span><span className="line-through decoration-1">{c.category}</span></span>
+                <HideButton off category={c.category} onHide={onShow} className="py-0" />
+              </div>
+              <div className="flex h-14 items-center justify-center rounded border border-dashed border-axis text-xs">מוסתרת</div>
+            </div>
+          );
           const vals = months.map((m, i) => d.trend[i].cats[c.category] ?? 0);
           const max = shared ? globalMax : Math.max(...vals, 1);
           const avg = vals.reduce((a, v) => a + v, 0) / Math.max(vals.length, 1);

@@ -58,7 +58,8 @@ app.post("/api/import", upload.single("file"), wrap(async (req) => {
 app.get("/api/dashboard", wrap((req) =>
   dashboard(req.query.month ?? defaultMonth(), { excludeTrips: req.query.trips === "exclude", card: req.query.card || null,
     hide: req.query.hide ? String(req.query.hide).split(",") : [] })));
-app.get("/api/trips/:id/dashboard", wrap((req) => tripDashboard(Number(req.params.id))));
+app.get("/api/trips/:id/dashboard", wrap((req) =>
+  tripDashboard(Number(req.params.id), { hide: req.query.hide ? String(req.query.hide).split(",") : [] })));
 
 // ---------- categories ----------
 const catExists = (name) => db.prepare("SELECT 1 FROM categories WHERE name = ?").get(name);

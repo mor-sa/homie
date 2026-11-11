@@ -264,10 +264,27 @@ export function dashboard(month, { excludeTrips = false, card = null, hide = [] 
   };
 }
 
-export function tripDashboard(id) {
+// hide: categories left out of the trip's numbers (its own set, separate from the overview's)
+const tripHideSql = (hide) => {
+  const names = hide.filter((h) => h !== "__none");
+  return (names.length ? ` AND (x.category IS NULL OR x.category NOT IN (${names.map((_, i) => "@h" + i).join(",")}))` : "") +
+    (hide.includes("__none") ? " AND x.category IS NOT NULL" : "");
+};
+
+export function tripDashboard(id, { hide = [] } = {}) {
   const trip = db.prepare("SELECT * FROM trips WHERE id=?").get(id);
   if (!trip) throw new Error("not found");
-  const rows = db.prepare(`SELECT * FROM transactions WHERE ${POSTED} AND trip_id = ? ORDER BY purchase_date`).all(id);
+  const keyOf = (r) => (r.category ? r.category : "__none");
+  const all = db.prepare(`SELECT * FROM transactions WHERE ${POSTED} AND trip_id = ? ORDER BY purchase_date`).all(id);
+  const rows = all.filter((r) => !hide.includes(keyOf(r)));
+  const colors = colorsMap();
+  const hidden = Object.values(
+    all.filter((r) => hide.includes(keyOf(r))).reduce((a, r) => {
+      const c = r.category ?? UNCAT;
+      (a[c] ??= { category: c, color: colors[c] ?? null, total: 0 }).total += r.amount;
+      return a;
+    }, {}),
+  );
   const days = Math.round((Date.parse(trip.end_date) - Date.parse(trip.start_date)) / 86400000) + 1;
   const total = sum(rows);
   const before = rows.filter((r) => r.purchase_date < trip.start_date);
@@ -309,10 +326,10 @@ export function tripDashboard(id) {
   const allTrips = db
     .prepare(
       `SELECT t.id, t.name, t.start_date, t.end_date, IFNULL(SUM(x.amount),0) AS total, COUNT(x.id) AS n
-       FROM trips t LEFT JOIN transactions x ON x.trip_id = t.id AND x.status='posted'
+       FROM trips t LEFT JOIN transactions x ON x.trip_id = t.id AND x.status='posted'${tripHideSql(hide)}
        GROUP BY t.id ORDER BY t.start_date DESC`,
     )
-    .all()
+    .all(Object.fromEntries(hide.filter((h) => h !== "__none").map((h, i) => ["h" + i, h])))
     .map((t) => {
       const d = Math.round((Date.parse(t.end_date) - Date.parse(t.start_date)) / 86400000) + 1;
       return { ...t, days: d, perDay: t.total / d };
@@ -335,5 +352,6 @@ export function tripDashboard(id) {
     largest: [...rows].sort((a, b) => b.amount - a.amount).slice(0, 5),
     allTrips,
     candidates,
+    hidden,
   };
 }

@@ -27,40 +27,40 @@ export function EyeIcon({ off = false, size = 15 }) {
   );
 }
 
-/** Small eye button that hides a category from the charts */
-export function HideButton({ category, onHide, className = "" }) {
+/** Eye button: hides a category, or (off) brings a hidden one back */
+export function HideButton({ category, onHide, off = false, className = "" }) {
+  const label = off ? `החזרת ${category} לגרפים` : `הסתרת ${category} מהגרפים`;
   return (
-    <button type="button" onClick={(e) => (e.stopPropagation(), onHide(category))} title={`הסתרת ${category} מהגרפים`}
-      aria-label={`הסתרת ${category}`} className={`rounded-md px-1.5 py-1 text-muted hover:bg-grid/40 hover:text-ink ${className}`}>
-      <EyeIcon />
+    <button type="button" onClick={(e) => (e.stopPropagation(), onHide(category))} title={label} aria-label={label}
+      aria-pressed={off} className={`rounded-md px-1.5 py-1 hover:bg-grid/40 hover:text-ink ${off ? "text-ink-2" : "text-muted"} ${className}`}>
+      <EyeIcon off={off} />
     </button>
   );
 }
 
-/** The hidden categories, each with what it adds, and a way back */
-export function HiddenBar({ hidden, onShow, onShowAll }) {
-  if (!hidden?.length) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-axis px-3 py-2 text-sm">
-      <span className="text-ink-2">מוסתרות מהגרפים ומהסכומים:</span>
-      {hidden.map((h) => (
-        <button key={h.category} type="button" onClick={() => onShow(h.category)} title={`החזרת ${h.category}`}
-          className="flex items-center gap-1.5 rounded-full border border-grid bg-surface px-2.5 py-0.5 text-ink-2 hover:border-axis hover:text-ink">
-          <EyeIcon off size={13} /><Swatch color={h.color} />{h.category}
-          {h.total ? <span className="num text-xs text-muted">{ils(h.total)}</span> : null}
-        </button>
-      ))}
-      {hidden.length > 1 && <button type="button" onClick={onShowAll} className="text-xs text-series-1 hover:underline">להחזיר הכל</button>}
-    </div>
-  );
-}
+/** Puts hidden categories back into a category list, marked hidden, at their place by amount */
+export const withHidden = (rows, hidden = []) =>
+  [...rows, ...hidden.map((h) => ({ ...h, subs: [], hidden: true }))].sort((a, b) => b.total - a.total);
 
-export function CategoryBars({ rows, compareKey, compareLabel, total, onPick, onHide }) {
+// rows marked `hidden` are drawn grayed out in place, with the eye to bring them back (onShow)
+export function CategoryBars({ rows, compareKey, compareLabel, total, onPick, onHide, onShow }) {
   const [open, setOpen] = useState(null);
-  const max = Math.max(...rows.map((r) => Math.max(r.total, compareKey ? r[compareKey] : 0)), 1);
+  // scale from the visible rows only, so hiding a big category lets the rest spread out
+  const max = Math.max(...rows.filter((r) => !r.hidden).map((r) => Math.max(r.total, compareKey ? r[compareKey] : 0)), 1);
   return (
     <ul className="grid gap-1">
       {rows.map((r) => {
+        if (r.hidden) return (
+          <li key={r.category} className="flex items-center gap-1 text-muted">
+            <div className="grid min-w-0 flex-1 grid-cols-[7.5rem_1fr_6rem] items-center gap-2 px-1 py-1 text-sm" title={`${r.category} מוסתרת: ${ils(r.total)}`}>
+              <span className="flex min-w-0 items-center gap-1.5"><span className="opacity-40"><Swatch color={r.color} /></span><span className="truncate line-through decoration-1">{r.category}</span></span>
+              <span className="h-4 rounded-l-[4px] border border-dashed border-muted bg-grid/60" style={{ width: `${Math.min(Math.max((r.total / max) * 100, 0.8), 100)}%` }} />
+              <span className="num text-end">{ils(r.total)}</span>
+            </div>
+            {onPick && <span className="w-[26px]" />}
+            {onShow && <HideButton off category={r.category} onHide={onShow} className="self-start" />}
+          </li>
+        );
         const cmp = compareKey ? r[compareKey] : null;
         const diff = cmp ? r.total / cmp - 1 : null;
         const expandable = r.subs?.length > 0;
