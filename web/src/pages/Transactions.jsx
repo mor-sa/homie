@@ -297,7 +297,7 @@ function FilterBar({ meta, month, filters, setFilter, onFilters, q, setQ, count,
   const cat = meta.categories.find((c) => c.name === filters.category);
   const trip = meta.trips.find((t) => String(t.id) === filters.trip);
   const chips = [
-    filters.card && { key: "card", label: `כרטיס ${owners[filters.card] ?? filters.card}` },
+    filters.card && { key: "card", label: filters.card === "manual" ? "הוצאות ללא כרטיס" : `כרטיס ${owners[filters.card] ?? filters.card}` },
     filters.fixed === "1" && { key: "fixed", label: "קבועות בלבד" },
     filters.notrips === "1" && { key: "notrips", label: "בלי טיולים" },
     filters.weekday && { key: "weekday", label: `יום ${DAYS[Number(filters.weekday)]} (משתנות, בלי טיולים)` },

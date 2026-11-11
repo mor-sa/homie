@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { api, ils, monthLabel } from "../api.js";
-import { ColumnChart, Donut, Segmented, Swatch } from "../components/charts.jsx";
+import { ColumnChart, Donut, HiddenBar, HideButton, Segmented, Swatch } from "../components/charts.jsx";
+import { useHidden } from "../hidden.js";
 
 const load = (k, d) => {
   try { return localStorage.getItem(k) ?? d; } catch { return d; }
@@ -89,10 +90,13 @@ export default function Graphs({ period, onGo, onDrill }) {
   const [by, setBy] = useState(() => load("graphs.by", "category"));
   const [yearMode, setYearMode] = useState(() => load("dash.yearMode", "avg"));
   const [tripMeasure, setTripMeasure] = useState(() => load("graphs.tripMeasure", "total"));
+  const { hidden, hide, show, showAll } = useHidden();
+  const hiddenKey = hidden.join(",");
   useEffect(() => {
     setD(null);
-    api.dashboard(period, trips, card).then(setD, (e) => setErr(e.message));
-  }, [period, trips, card]);
+    api.dashboard(period, trips, card, hidden).then(setD, (e) => setErr(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, trips, card, hiddenKey]);
 
   if (err) return <p className="text-critical">{err}</p>;
   if (!d) return <p className="text-muted">טוען…</p>;
@@ -137,6 +141,8 @@ export default function Graphs({ period, onGo, onDrill }) {
         {avg && <span className="text-xs text-muted">הסכומים בעוגות מחולקים ב־{d.monthsInPeriod} חודשים עם נתונים</span>}
       </div>
 
+      <HiddenBar hidden={d.hidden} onShow={show} onShowAll={showAll} />
+
       <section className="card p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-semibold">הוצאות לפי חודש</h3>
@@ -168,12 +174,12 @@ export default function Graphs({ period, onGo, onDrill }) {
       </section>
 
       <PieLabel.Provider value={avg ? "ממוצע לחודש" : "סה״כ"}>
-        <Pies d={ds} owners={owners} cardColor={cardColor} trips={trips} card={card} drill={drill} onGo={onGo} />
+        <Pies d={ds} onHide={hide} owners={owners} cardColor={cardColor} trips={trips} card={card} drill={drill} onGo={onGo} />
       </PieLabel.Provider>
 
       <Changes d={d} isYear={isYear} onPick={(category) => drill({ category })} />
 
-      <CategoryMultiples d={d} onPick={(category, month) => drill({ category }, month)} />
+      <CategoryMultiples d={d} onHide={hide} onPick={(category, month) => drill({ category }, month)} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         {!card && d.cards.length > 1 && <WhoPays d={d} owners={owners} cardColor={cardColor} onPick={(category, c) => drill({ category, card: c })} />}
@@ -199,12 +205,13 @@ function PieCard({ title, note, rows, extra, size = 150 }) {
       <div className="mt-3"><Donut rows={rows} size={size} centerLabel={centerLabel} onPick={(label) => byLabel[label === "__none" ? "לא מסווג" : label]?.onPick?.()} /></div>
       <ul className={`mt-3 grid gap-x-4 gap-y-1 text-sm ${rows.length > 8 ? "sm:grid-cols-2" : ""}`}>
         {rows.filter((r) => r.total > 0).map((r) => (
-          <li key={r.category}>
-            <button onClick={r.onPick} disabled={!r.onPick} className="flex w-full items-center gap-2 rounded px-1 text-start enabled:hover:bg-grid/40">
+          <li key={r.category} className="flex items-center">
+            <button onClick={r.onPick} disabled={!r.onPick} className="flex min-w-0 flex-1 items-center gap-2 rounded px-1 text-start enabled:hover:bg-grid/40">
               <Swatch color={r.color} /><span className="min-w-0 flex-1 truncate">{r.category}</span>
               <span className="num text-ink-2">{ils(r.total)}</span>
               <span className="num w-9 text-end text-xs text-muted">{pct(r.total, total)}%</span>
             </button>
+            {r.onHide && <HideButton category={r.category} onHide={r.onHide} className="py-0" />}
           </li>
         ))}
       </ul>
@@ -212,7 +219,7 @@ function PieCard({ title, note, rows, extra, size = 150 }) {
   );
 }
 
-function Pies({ d, owners, cardColor, trips, card, drill, onGo }) {
+function Pies({ d, onHide, owners, cardColor, trips, card, drill, onGo }) {
   const k = d.kpis;
   const [subCat, setSubCat] = useState(() => load("graphs.subCat", ""));
   const withSubs = d.byCategory.filter((c) => c.subs.length > 0 && c.total > 0);
@@ -257,7 +264,7 @@ function Pies({ d, owners, cardColor, trips, card, drill, onGo }) {
 
   // the two big category pies: trips folded into one slice, and every expense in its own category
   const catRows = (list) => list.filter((c) => c.total > 0).map((c) => ({
-    category: c.category, color: c.color, total: c.total,
+    category: c.category, color: c.color, total: c.total, onHide,
     onPick: () => drill({ category: c.category === "לא מסווג" ? "__none" : c.category, ...(list === d.byCategoryNoTrips ? { notrips: "1" } : {}) }),
   }));
   const foldTrips = trips === "include" && k.trip > 0;
@@ -368,7 +375,7 @@ function Changes({ d, isYear, onPick }) {
 }
 
 // Small multiples: one mini column chart per category, all on the same scale so heights compare honestly
-function CategoryMultiples({ d, onPick }) {
+function CategoryMultiples({ d, onHide, onPick }) {
   const [shared, setShared] = useState(() => load("graphs.sharedScale", "own") === "shared");
   const months = d.trend.map((t) => t.month);
   const cats = d.byCategory.filter((c) => c.total > 0).slice(0, 12);
@@ -392,7 +399,10 @@ function CategoryMultiples({ d, onPick }) {
             <div key={c.category}>
               <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
                 <span className="flex items-center gap-1.5 truncate font-medium"><Swatch color={c.color} />{c.category}</span>
-                <span className="num shrink-0 text-xs text-muted">~{ils(avg)}</span>
+                <span className="flex shrink-0 items-center">
+                  <span className="num text-xs text-muted">~{ils(avg)}</span>
+                  <HideButton category={c.category} onHide={onHide} className="py-0" />
+                </span>
               </div>
               <div className="flex h-14 items-end gap-[2px] border-b border-axis">
                 {vals.map((v, i) => (

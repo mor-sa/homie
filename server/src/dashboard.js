@@ -68,12 +68,22 @@ function merchantsOf(rows) {
 }
 
 // `month` is "YYYY-MM" for a month view or "YYYY" for a year view
-export function dashboard(month, { excludeTrips = false, card = null } = {}) {
+// hide: category names to leave out of every number and chart ("__none" = uncategorized)
+export function dashboard(month, { excludeTrips = false, card = null, hide = [] } = {}) {
   const isYear = /^\d{4}$/.test(month);
   const tripFilter = excludeTrips ? " AND trip_id IS NULL" : "";
-  const cardFilter = card ? " AND card = @card" : "";
+  const cardOnly = card ? " AND card = @card" : "";
+  const params = card ? { card } : {};
+  const names = hide.filter((h) => h && h !== "__none");
+  names.forEach((h, i) => (params["h" + i] = h));
+  // `x` = table alias, for queries that join
+  const filterFor = (x = "") =>
+    (card ? ` AND ${x}card = @card` : "") +
+    (names.length ? ` AND (${x}category IS NULL OR ${x}category NOT IN (${names.map((_, i) => "@h" + i).join(",")}))` : "") +
+    (hide.includes("__none") ? ` AND ${x}category IS NOT NULL` : "");
+  const cardFilter = filterFor();
   const inMonth = db.prepare(`SELECT * FROM transactions WHERE ${POSTED}${tripFilter}${cardFilter} AND purchase_date LIKE @m || '%'`);
-  const q = (m) => inMonth.all(card ? { m, card } : { m });
+  const q = (m) => inMonth.all({ m, ...params });
   const rows = q(month);
 
   const prevMonth = isYear ? String(Number(month) - 1) : shiftMonth(month, -1);
@@ -99,7 +109,7 @@ export function dashboard(month, { excludeTrips = false, card = null } = {}) {
     .all({
       from: isYear ? `${month}-01-01` : shiftMonth(month, -11) + "-01",
       to: isYear ? `${Number(month) + 1}-01-01` : shiftMonth(month, 1) + "-01",
-      ...(card ? { card } : {}),
+      ...params,
     });
   const byMonth = {};
   for (const r of trendRows) {
@@ -144,10 +154,10 @@ export function dashboard(month, { excludeTrips = false, card = null } = {}) {
     .prepare(
       `SELECT t.id, t.name, t.start_date, t.end_date, IFNULL(SUM(x.amount),0) AS total
        FROM trips t LEFT JOIN transactions x ON x.trip_id = t.id AND x.status='posted' AND x.amount IS NOT NULL
-         ${card ? "AND x.card = @card" : ""}
+         ${filterFor("x.")}
        GROUP BY t.id ORDER BY t.start_date`,
     )
-    .all(card ? { card } : {})
+    .all(params)
     .map((t) => {
       const days = Math.round((Date.parse(t.end_date) - Date.parse(t.start_date)) / 86400000) + 1;
       return { ...t, days, perDay: t.total / days };
@@ -228,7 +238,7 @@ export function dashboard(month, { excludeTrips = false, card = null } = {}) {
       `SELECT MAX(merchant) AS merchant, category, SUM(amount) AS total FROM transactions
        WHERE ${POSTED}${cardFilter} AND is_fixed = 1 AND purchase_date LIKE @m || '%' GROUP BY merchant_key ORDER BY total DESC`,
     )
-    .all(card ? { m: month, card } : { m: month });
+    .all({ m: month, ...params });
 
   return {
     month,
@@ -244,6 +254,13 @@ export function dashboard(month, { excludeTrips = false, card = null } = {}) {
     },
     byCategory, byCategoryNoTrips: categoryBreakdown(rows.filter((r) => !r.trip_id)), trend, trendTrips, tripsInPeriod, catByCard, tripsCompare, topMerchants, largest, weekday, subscriptions, insights,
     card, cards: usedCards(),
+    // hidden categories with what they'd add, so they can be listed and brought back
+    hidden: hide.length ? db
+      .prepare(`SELECT IFNULL(category, '${UNCAT}') AS category, SUM(amount) AS total FROM transactions
+                WHERE ${POSTED}${tripFilter}${cardOnly} AND purchase_date LIKE @m || '%' GROUP BY category`)
+      .all({ m: month, ...(card ? { card } : {}) })
+      .filter((r) => hide.includes(r.category === UNCAT ? "__none" : r.category))
+      .map((r) => ({ ...r, color: colorsMap()[r.category] ?? null })) : [],
   };
 }
 

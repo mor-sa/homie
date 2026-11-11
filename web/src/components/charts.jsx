@@ -17,7 +17,45 @@ export function Swatch({ color, size = 10 }) {
 // onPick(category, sub?) opens the matching transactions; "לא מסווג" is passed as "__none"
 const pickKey = (c) => (c === "לא מסווג" ? "__none" : c);
 
-export function CategoryBars({ rows, compareKey, compareLabel, total, onPick }) {
+export function EyeIcon({ off = false, size = 15 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+      {off && <path d="M3 3l18 18" />}
+    </svg>
+  );
+}
+
+/** Small eye button that hides a category from the charts */
+export function HideButton({ category, onHide, className = "" }) {
+  return (
+    <button type="button" onClick={(e) => (e.stopPropagation(), onHide(category))} title={`הסתרת ${category} מהגרפים`}
+      aria-label={`הסתרת ${category}`} className={`rounded-md px-1.5 py-1 text-muted hover:bg-grid/40 hover:text-ink ${className}`}>
+      <EyeIcon />
+    </button>
+  );
+}
+
+/** The hidden categories, each with what it adds, and a way back */
+export function HiddenBar({ hidden, onShow, onShowAll }) {
+  if (!hidden?.length) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-axis px-3 py-2 text-sm">
+      <span className="text-ink-2">מוסתרות מהגרפים ומהסכומים:</span>
+      {hidden.map((h) => (
+        <button key={h.category} type="button" onClick={() => onShow(h.category)} title={`החזרת ${h.category}`}
+          className="flex items-center gap-1.5 rounded-full border border-grid bg-surface px-2.5 py-0.5 text-ink-2 hover:border-axis hover:text-ink">
+          <EyeIcon off size={13} /><Swatch color={h.color} />{h.category}
+          {h.total ? <span className="num text-xs text-muted">{ils(h.total)}</span> : null}
+        </button>
+      ))}
+      {hidden.length > 1 && <button type="button" onClick={onShowAll} className="text-xs text-series-1 hover:underline">להחזיר הכל</button>}
+    </div>
+  );
+}
+
+export function CategoryBars({ rows, compareKey, compareLabel, total, onPick, onHide }) {
   const [open, setOpen] = useState(null);
   const max = Math.max(...rows.map((r) => Math.max(r.total, compareKey ? r[compareKey] : 0)), 1);
   return (
@@ -78,6 +116,7 @@ export function CategoryBars({ rows, compareKey, compareLabel, total, onPick }) 
               <button type="button" onClick={() => onPick(pickKey(r.category))} title={`עסקאות ב${r.category}`}
                 aria-label={`עסקאות ב${r.category}`} className="self-start rounded-md px-1.5 py-1 text-sm text-muted hover:bg-grid/40 hover:text-ink">↗</button>
             )}
+            {onHide && <HideButton category={r.category} onHide={onHide} className="self-start" />}
           </li>
         );
       })}

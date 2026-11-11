@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, ils, monthLabel } from "../api.js";
-import { CategoryBars, ColumnChart, Donut, ListCard, Segmented, Stat, txLabel } from "../components/charts.jsx";
+import { CategoryBars, ColumnChart, Donut, HiddenBar, ListCard, Segmented, Stat, txLabel } from "../components/charts.jsx";
+import { useHidden } from "../hidden.js";
 
 const load = (k, d) => {
   try { return localStorage.getItem(k) ?? d; } catch { return d; }
@@ -14,10 +15,13 @@ export default function Dashboard({ month, onGo, onDrill }) {
   const [err, setErr] = useState(null);
   const [trips, setTrips] = useState(() => load("dash.trips", "include"));
   const [card, setCard] = useState(() => load("dash.card", ""));
+  const { hidden, hide, show, showAll } = useHidden();
+  const hiddenKey = hidden.join(",");
   useEffect(() => {
     setD(null);
-    api.dashboard(month, trips, card).then(setD, (e) => setErr(e.message));
-  }, [month, trips, card]);
+    api.dashboard(month, trips, card, hidden).then(setD, (e) => setErr(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month, trips, card, hiddenKey]);
 
   const [yearMode, setYearMode] = useState(() => load("dash.yearMode", "avg"));
   const toggle = (v) => (setTrips(v), save("dash.trips", v));
@@ -66,6 +70,8 @@ export default function Dashboard({ month, onGo, onDrill }) {
         )}
       </div>
 
+      <HiddenBar hidden={d.hidden} onShow={show} onShowAll={showAll} />
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label={avg ? "ממוצע לחודש" : "סה״כ"} value={ils(k.total)}
           sub={avg ? <span className="text-muted">{d.monthsInPeriod} חודשים עם נתונים · סה״כ {ils(d.kpis.total)}</span> : delta != null && (
@@ -75,7 +81,7 @@ export default function Dashboard({ month, onGo, onDrill }) {
           )} />
         <Stat onClick={() => drill({ fixed: "1" })} label={"הוצאות קבועות" + unit} value={ils(k.fixed)} sub={<span className="text-muted">משתנות: {ils(k.variable)}</span>} />
         {!card && k.byCard.map((c) => (
-          <Stat key={c.card} onClick={() => drill({ card: c.card })} label={`כרטיס ${c.owner}${unit}`} value={ils(c.total)}
+          <Stat key={c.card} onClick={() => drill({ card: c.card })} label={(c.card === "manual" ? "הוצאות ללא כרטיס" : `כרטיס ${c.owner}`) + unit} value={ils(c.total)}
             sub={<span className="num text-muted">{k.total ? Math.round((c.total / k.total) * 100) : 0}%</span>} />
         ))}
       </div>
@@ -86,10 +92,10 @@ export default function Dashboard({ month, onGo, onDrill }) {
           <p className="mb-3 flex flex-wrap gap-x-4 text-xs text-muted">
             {hasCompare && <span>הפס הצבעוני: {monthLabel(month)}</span>}
             {hasCompare && <span className="flex items-center gap-1.5"><span className="inline-block h-1.5 w-4 rounded-sm bg-axis" />{monthLabel(d.prevMonth)}</span>}
-            <span>לחיצה על קטגוריה מציגה תתי־קטגוריות</span>
+            <span>לחיצה על קטגוריה מציגה תתי־קטגוריות · העין מסתירה קטגוריה</span>
           </p>
           <CategoryBars rows={byCategory} compareKey={hasCompare ? "prev" : undefined} compareLabel={monthLabel(d.prevMonth)}
-            total={isYear ? k.total : undefined} onPick={pick} />
+            total={isYear ? k.total : undefined} onPick={pick} onHide={hide} />
         </section>
         <div className="grid gap-4 lg:col-span-2">
           <section className="card p-4">
