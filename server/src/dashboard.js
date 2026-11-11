@@ -67,20 +67,46 @@ function merchantsOf(rows) {
   );
 }
 
+
+// ---- hiding categories / sub-categories from the numbers ----
+// A hide entry is a category name, "__none" (uncategorized), or "category > sub" ("category > __none" = no sub)
+const HSEP = " > ";
+/** SQL conditions for `hide` (x = table alias); fills the named params it uses */
+function hideSql(hide, x = "", params = {}) {
+  const cats = hide.filter((h) => h && !h.includes(HSEP) && h !== "__none");
+  const subs = hide.filter((h) => h.includes(HSEP)).map((h) => h.split(HSEP));
+  cats.forEach((h, i) => (params["hc" + i] = h));
+  subs.forEach(([c, sb], i) => ((params["sc" + i] = c), (params["ss" + i] = sb)));
+  return (cats.length ? ` AND (${x}category IS NULL OR ${x}category NOT IN (${cats.map((_, i) => "@hc" + i).join(",")}))` : "") +
+    (hide.includes("__none") ? ` AND ${x}category IS NOT NULL` : "") +
+    subs.map((_, i) => ` AND NOT (IFNULL(${x}category,'') = @sc${i} AND IFNULL(${x}subcategory,'__none') = @ss${i})`).join("");
+}
+const isHiddenRow = (r, hide) =>
+  hide.includes(r.category ?? "__none") || (r.category && hide.includes(r.category + HSEP + (r.subcategory ?? "__none")));
+/** What each hide entry takes out: [{category, sub?, color, total}] */
+function hiddenSummary(rows, hide) {
+  if (!hide.length) return [];
+  const colors = colorsMap();
+  const out = {};
+  for (const r of rows) {
+    if (!isHiddenRow(r, hide)) continue;
+    const c = r.category ?? UNCAT;
+    const wholeCat = hide.includes(r.category ?? "__none");
+    const k = wholeCat ? c : c + HSEP + (r.subcategory ?? "__none");
+    (out[k] ??= { category: c, ...(wholeCat ? {} : { sub: r.subcategory ?? "__none" }), color: colors[c] ?? null, total: 0 }).total += r.amount;
+  }
+  return Object.values(out);
+}
+
 // `month` is "YYYY-MM" for a month view or "YYYY" for a year view
-// hide: category names to leave out of every number and chart ("__none" = uncategorized)
+// hide: categories or "category > sub" entries to leave out of every number and chart
 export function dashboard(month, { excludeTrips = false, card = null, hide = [] } = {}) {
   const isYear = /^\d{4}$/.test(month);
   const tripFilter = excludeTrips ? " AND trip_id IS NULL" : "";
   const cardOnly = card ? " AND card = @card" : "";
   const params = card ? { card } : {};
-  const names = hide.filter((h) => h && h !== "__none");
-  names.forEach((h, i) => (params["h" + i] = h));
   // `x` = table alias, for queries that join
-  const filterFor = (x = "") =>
-    (card ? ` AND ${x}card = @card` : "") +
-    (names.length ? ` AND (${x}category IS NULL OR ${x}category NOT IN (${names.map((_, i) => "@h" + i).join(",")}))` : "") +
-    (hide.includes("__none") ? ` AND ${x}category IS NOT NULL` : "");
+  const filterFor = (x = "") => (card ? ` AND ${x}card = @card` : "") + hideSql(hide, x, params);
   const cardFilter = filterFor();
   const inMonth = db.prepare(`SELECT * FROM transactions WHERE ${POSTED}${tripFilter}${cardFilter} AND purchase_date LIKE @m || '%'`);
   const q = (m) => inMonth.all({ m, ...params });
@@ -255,36 +281,22 @@ export function dashboard(month, { excludeTrips = false, card = null, hide = [] 
     byCategory, byCategoryNoTrips: categoryBreakdown(rows.filter((r) => !r.trip_id)), trend, trendTrips, tripsInPeriod, catByCard, tripsCompare, topMerchants, largest, weekday, subscriptions, insights,
     card, cards: usedCards(),
     // hidden categories with what they'd add, so they can be listed and brought back
-    hidden: hide.length ? db
-      .prepare(`SELECT IFNULL(category, '${UNCAT}') AS category, SUM(amount) AS total FROM transactions
-                WHERE ${POSTED}${tripFilter}${cardOnly} AND purchase_date LIKE @m || '%' GROUP BY category`)
-      .all({ m: month, ...(card ? { card } : {}) })
-      .filter((r) => hide.includes(r.category === UNCAT ? "__none" : r.category))
-      .map((r) => ({ ...r, color: colorsMap()[r.category] ?? null })) : [],
+    hidden: hide.length ? hiddenSummary(db
+      .prepare(`SELECT category, subcategory, amount FROM transactions
+                WHERE ${POSTED}${tripFilter}${cardOnly} AND purchase_date LIKE @m || '%'`)
+      .all({ m: month, ...(card ? { card } : {}) }), hide) : [],
   };
 }
 
 // hide: categories left out of the trip's numbers (its own set, separate from the overview's)
-const tripHideSql = (hide) => {
-  const names = hide.filter((h) => h !== "__none");
-  return (names.length ? ` AND (x.category IS NULL OR x.category NOT IN (${names.map((_, i) => "@h" + i).join(",")}))` : "") +
-    (hide.includes("__none") ? " AND x.category IS NOT NULL" : "");
-};
-
 export function tripDashboard(id, { hide = [] } = {}) {
   const trip = db.prepare("SELECT * FROM trips WHERE id=?").get(id);
   if (!trip) throw new Error("not found");
-  const keyOf = (r) => (r.category ? r.category : "__none");
   const all = db.prepare(`SELECT * FROM transactions WHERE ${POSTED} AND trip_id = ? ORDER BY purchase_date`).all(id);
-  const rows = all.filter((r) => !hide.includes(keyOf(r)));
-  const colors = colorsMap();
-  const hidden = Object.values(
-    all.filter((r) => hide.includes(keyOf(r))).reduce((a, r) => {
-      const c = r.category ?? UNCAT;
-      (a[c] ??= { category: c, color: colors[c] ?? null, total: 0 }).total += r.amount;
-      return a;
-    }, {}),
-  );
+  const rows = all.filter((r) => !isHiddenRow(r, hide));
+  const hidden = hiddenSummary(all, hide);
+  const hideParams = {};
+  const hideJoin = hideSql(hide, "x.", hideParams);
   const days = Math.round((Date.parse(trip.end_date) - Date.parse(trip.start_date)) / 86400000) + 1;
   const total = sum(rows);
   const before = rows.filter((r) => r.purchase_date < trip.start_date);
@@ -326,10 +338,10 @@ export function tripDashboard(id, { hide = [] } = {}) {
   const allTrips = db
     .prepare(
       `SELECT t.id, t.name, t.start_date, t.end_date, IFNULL(SUM(x.amount),0) AS total, COUNT(x.id) AS n
-       FROM trips t LEFT JOIN transactions x ON x.trip_id = t.id AND x.status='posted'${tripHideSql(hide)}
+       FROM trips t LEFT JOIN transactions x ON x.trip_id = t.id AND x.status='posted'${hideJoin}
        GROUP BY t.id ORDER BY t.start_date DESC`,
     )
-    .all(Object.fromEntries(hide.filter((h) => h !== "__none").map((h, i) => ["h" + i, h])))
+    .all(hideParams)
     .map((t) => {
       const d = Math.round((Date.parse(t.end_date) - Date.parse(t.start_date)) / 86400000) + 1;
       return { ...t, days: d, perDay: t.total / d };

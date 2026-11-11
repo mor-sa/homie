@@ -21,12 +21,12 @@ export function useHidden(scope = "dash") {
     setHidden(next);
     dispatchEvent(new Event("hidden-cats"));
   };
-  // "לא מסווג" is sent to the server as "__none"
-  const key = (category) => (category === "לא מסווג" ? "__none" : category);
+  // a whole category, or "category > sub" for one sub-category ("__none" = uncategorized / no sub-category)
+  const key = (category, sub) => (sub ? `${category} > ${sub}` : category === "לא מסווג" ? "__none" : category);
   return {
     hidden,
-    hide: (category) => save([...new Set([...hidden, key(category)])]),
-    show: (category) => save(hidden.filter((h) => h !== key(category))),
+    hide: (category, sub) => save([...new Set([...hidden, key(category, sub)])]),
+    show: (category, sub) => save(hidden.filter((h) => h !== key(category, sub))),
     showAll: () => save([]),
   };
 }

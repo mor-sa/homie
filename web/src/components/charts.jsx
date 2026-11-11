@@ -38,9 +38,21 @@ export function HideButton({ category, onHide, off = false, className = "" }) {
   );
 }
 
-/** Puts hidden categories back into a category list, marked hidden, at their place by amount */
-export const withHidden = (rows, hidden = []) =>
-  [...rows, ...hidden.map((h) => ({ ...h, subs: [], hidden: true }))].sort((a, b) => b.total - a.total);
+export const subLabel = (sub) => (sub === "__none" ? "ללא תת־קטגוריה" : sub);
+
+/** Puts hidden categories back into a category list, marked hidden, at their place by amount.
+ *  Hidden sub-categories go under their category as `hiddenSubs`. */
+export function withHidden(rows, hidden = []) {
+  const subs = hidden.filter((h) => h.sub);
+  const out = rows.map((r) => ({ ...r, hiddenSubs: subs.filter((h) => h.category === r.category) }));
+  // a category whose every sub-category is hidden still needs a row to bring them back from
+  subs.filter((h) => !out.some((r) => r.category === h.category)).forEach((h) => {
+    const row = out.find((r) => r.category === h.category && r.onlyHidden);
+    if (row) row.hiddenSubs.push(h);
+    else out.push({ category: h.category, color: h.color, total: 0, subs: [], hiddenSubs: [h], onlyHidden: true });
+  });
+  return [...out, ...hidden.filter((h) => !h.sub).map((h) => ({ ...h, subs: [], hidden: true }))].sort((a, b) => b.total - a.total);
+}
 
 // rows marked `hidden` are drawn grayed out in place, with the eye to bring them back (onShow)
 export function CategoryBars({ rows, compareKey, compareLabel, total, onPick, onHide, onShow }) {
@@ -63,7 +75,8 @@ export function CategoryBars({ rows, compareKey, compareLabel, total, onPick, on
         );
         const cmp = compareKey ? r[compareKey] : null;
         const diff = cmp ? r.total / cmp - 1 : null;
-        const expandable = r.subs?.length > 0;
+        const hiddenSubs = r.hiddenSubs ?? [];
+        const expandable = r.subs?.length > 0 || hiddenSubs.length > 0;
         return (
           <li key={r.category} className="flex items-center gap-1">
             <div className="min-w-0 flex-1">
@@ -77,6 +90,7 @@ export function CategoryBars({ rows, compareKey, compareLabel, total, onPick, on
                 <Swatch color={r.color} />
                 <span className="truncate">{r.category}</span>
                 {expandable && <span className="text-[10px] text-muted">{open === r.category ? "▾" : "◂"}</span>}
+                {hiddenSubs.length > 0 && <span className="shrink-0 text-muted" title={`מוסתרות: ${hiddenSubs.map((h) => subLabel(h.sub)).join(", ")}`}><EyeIcon off size={12} /></span>}
               </span>
               <span className="grid gap-[3px]">
                 <span className="h-4 rounded-l-[4px]" style={{ width: `${Math.max((r.total / max) * 100, r.total > 0 ? 0.8 : 0)}%`, background: r.color ?? UNCAT_COLOR, ...edge }} />
@@ -94,21 +108,25 @@ export function CategoryBars({ rows, compareKey, compareLabel, total, onPick, on
             </button>
             {open === r.category && (
               <ul className="mb-1 ms-6 grid gap-0.5 border-s border-grid ps-3">
-                {r.subs.map((s) => (
-                  <li key={s.name} onClick={() => onPick?.(r.category, s.name)}
-                    className={`grid grid-cols-[7rem_1fr_5.5rem] items-center gap-2 rounded px-1 py-0.5 text-xs ${onPick ? "cursor-pointer hover:bg-grid/40" : ""}`}>
-                    <span className="truncate text-ink-2">{s.name}</span>
-                    <span className="h-2.5 rounded-l-[3px] opacity-80" style={{ width: `${(s.total / max) * 100}%`, background: r.color ?? UNCAT_COLOR, ...edge }} />
-                    <span className="num text-end">{ils(s.total)}</span>
+                {[...r.subs.map((x) => ({ ...x, sub: x.name })),
+                  ...(r.total - r.subs.reduce((a, x) => a + x.total, 0) > 1
+                    ? [{ sub: "__none", total: r.total - r.subs.reduce((a, x) => a + x.total, 0) }] : []),
+                  ...hiddenSubs.map((h) => ({ ...h, hidden: true })),
+                ].sort((a, b) => b.total - a.total).map((x) => (
+                  <li key={x.sub} className={`flex items-center ${x.hidden ? "text-muted" : ""}`}>
+                    <span onClick={() => !x.hidden && onPick?.(r.category, x.sub)}
+                      className={`grid min-w-0 flex-1 grid-cols-[7rem_1fr_5.5rem] items-center gap-2 rounded px-1 py-0.5 text-xs ${onPick && !x.hidden ? "cursor-pointer hover:bg-grid/40" : ""}`}>
+                      <span className={`truncate ${x.hidden ? "line-through decoration-1" : x.sub === "__none" ? "text-muted" : "text-ink-2"}`}>{subLabel(x.sub)}</span>
+                      {x.hidden
+                        ? <span className="h-2.5 rounded-l-[3px] border border-dashed border-muted bg-grid/60" style={{ width: `${Math.min((x.total / max) * 100, 100)}%` }} />
+                        : <span className="h-2.5 rounded-l-[3px] opacity-80" style={{ width: `${(x.total / max) * 100}%`, background: x.sub === "__none" ? "var(--color-axis)" : r.color ?? UNCAT_COLOR, ...edge }} />}
+                      <span className="num text-end">{ils(x.total)}</span>
+                    </span>
+                    {x.hidden
+                      ? onShow && <HideButton off category={`${r.category} › ${subLabel(x.sub)}`} onHide={() => onShow(r.category, x.sub)} className="py-0" />
+                      : onHide && <HideButton category={`${r.category} › ${subLabel(x.sub)}`} onHide={() => onHide(r.category, x.sub)} className="py-0" />}
                   </li>
                 ))}
-                {r.total - r.subs.reduce((a, s) => a + s.total, 0) > 1 && (
-                  <li onClick={() => onPick?.(r.category, "__none")}
-                    className={`grid grid-cols-[7rem_1fr_5.5rem] gap-2 rounded px-1 py-0.5 text-xs text-muted ${onPick ? "cursor-pointer hover:bg-grid/40" : ""}`}>
-                    <span>ללא תת־קטגוריה</span><span />
-                    <span className="num text-end">{ils(r.total - r.subs.reduce((a, s) => a + s.total, 0))}</span>
-                  </li>
-                )}
               </ul>
             )}
             </div>

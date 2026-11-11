@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { api, ils, monthLabel } from "../api.js";
-import { ColumnChart, Donut, HideButton, Segmented, Swatch } from "../components/charts.jsx";
+import { ColumnChart, Donut, HideButton, Segmented, Swatch, subLabel } from "../components/charts.jsx";
 import { useHidden } from "../hidden.js";
 
 const load = (k, d) => {
@@ -144,7 +144,9 @@ export default function Graphs({ period, onGo, onDrill }) {
 
       {d.hidden.length > 0 && (
         <p className="-mt-2 text-xs text-muted">
-          {d.hidden.length === 1 ? `${d.hidden[0].category} מוסתרת מהגרפים ומהסכומים (מופיעה באפור)` : `${d.hidden.length} קטגוריות מוסתרות מהגרפים ומהסכומים (מופיעות באפור)`}
+          {d.hidden.length === 1
+            ? `${d.hidden[0].sub ? `${d.hidden[0].category} › ${subLabel(d.hidden[0].sub)}` : d.hidden[0].category} מוסתרת מהגרפים ומהסכומים (מופיעה באפור)`
+            : `מוסתרות מהגרפים ומהסכומים (מופיעות באפור): ${d.hidden.map((h) => (h.sub ? `${h.category} › ${subLabel(h.sub)}` : h.category)).join(", ")}`}
           {" · "}<button onClick={showAll} className="text-series-1 hover:underline">להחזיר הכל</button>
         </p>
       )}
@@ -238,7 +240,7 @@ function PieCard({ title, note, rows, extra, size = 150 }) {
 function Pies({ d, onHide, onShow, owners, cardColor, trips, card, drill, onGo }) {
   const k = d.kpis;
   const [subCat, setSubCat] = useState(() => load("graphs.subCat", ""));
-  const withSubs = d.byCategory.filter((c) => c.subs.length > 0 && c.total > 0);
+  const withSubs = d.byCategory.filter((c) => (c.subs.length > 0 && c.total > 0) || d.hidden.some((h) => h.sub && h.category === c.category));
   const cat = withSubs.find((c) => c.category === subCat) ?? withSubs[0];
   const weekend = d.weekday[5] + d.weekday[6];
   const weekdays = d.weekday.slice(0, 5).reduce((a, v) => a + v, 0);
@@ -271,7 +273,8 @@ function Pies({ d, onHide, onShow, owners, cardColor, trips, card, drill, onGo }
     ]} />);
 
   if (cat) pies.push(
-    <SubPie key="subs" cat={cat} drill={drill} extra={
+    <SubPie key="subs" cat={cat} drill={drill} onHide={onHide} onShow={onShow}
+      hiddenSubs={d.hidden.filter((h) => h.sub && h.category === cat.category)} extra={
       <select value={cat.category} onChange={(e) => (setSubCat(e.target.value), save("graphs.subCat", e.target.value))}
         aria-label="קטגוריה" className="mt-2 rounded-lg border border-grid bg-surface px-2 py-1 text-sm">
         {withSubs.map((c) => <option key={c.category} value={c.category}>{c.category}</option>)}
@@ -284,7 +287,7 @@ function Pies({ d, onHide, onShow, owners, cardColor, trips, card, drill, onGo }
       category: c.category, color: c.color, total: c.total, onHide,
       onPick: () => drill({ category: c.category === "לא מסווג" ? "__none" : c.category, ...(list === d.byCategoryNoTrips ? { notrips: "1" } : {}) }),
     })),
-    ...d.hidden.map((h) => ({ ...h, hidden: true, onShow })),
+    ...d.hidden.filter((h) => !h.sub).map((h) => ({ ...h, hidden: true, onShow })),
   ];
   const foldTrips = trips === "include" && k.trip > 0;
 
@@ -305,7 +308,7 @@ function Pies({ d, onHide, onShow, owners, cardColor, trips, card, drill, onGo }
 }
 
 // Sub-categories as shades of the category's own color (one hue, light to dark by size)
-function SubPie({ cat, drill, extra }) {
+function SubPie({ cat, drill, extra, onHide, onShow, hiddenSubs = [] }) {
   const unsplit = cat.total - cat.subs.reduce((a, s) => a + s.total, 0);
   const subs = cat.subs.filter((s) => s.total > 0);
   // biggest slice in the category's own color, the rest stepping darker (toward a fixed dark, so pastels work in both modes)
@@ -314,8 +317,11 @@ function SubPie({ cat, drill, extra }) {
     return `color-mix(in oklab, ${cat.color ?? "#c3c2b7"} ${100 - t}%, #1f2a24 ${t}%)`;
   };
   const rows = [
-    ...subs.map((s, i) => ({ category: s.name, color: shade(i), total: s.total, onPick: () => drill({ category: cat.category, sub: s.name }) })),
-    ...(unsplit > 0.5 ? [{ category: "בלי תת־קטגוריה", color: "var(--color-grid)", total: unsplit, onPick: () => drill({ category: cat.category, incomplete: "1" }) }] : []),
+    ...subs.map((s, i) => ({ category: s.name, color: shade(i), total: s.total, onPick: () => drill({ category: cat.category, sub: s.name }),
+      onHide: () => onHide(cat.category, s.name) })),
+    ...(unsplit > 0.5 ? [{ category: subLabel("__none"), color: "var(--color-grid)", total: unsplit, onPick: () => drill({ category: cat.category, sub: "__none" }),
+      onHide: () => onHide(cat.category, "__none") }] : []),
+    ...hiddenSubs.map((h) => ({ category: subLabel(h.sub), color: cat.color, total: h.total, hidden: true, onShow: () => onShow(cat.category, h.sub) })),
   ];
   return <PieCard title="קטגוריה לפי תתי־קטגוריות" note={`${cat.category}: ${ils(cat.total)}`} rows={rows} extra={extra} />;
 }
@@ -397,7 +403,7 @@ function Changes({ d, isYear, onPick }) {
 function CategoryMultiples({ d, onHide, onShow, onPick }) {
   const [shared, setShared] = useState(() => load("graphs.sharedScale", "own") === "shared");
   const months = d.trend.map((t) => t.month);
-  const cats = [...d.byCategory.filter((c) => c.total > 0).slice(0, 12), ...d.hidden.map((h) => ({ ...h, hidden: true }))]
+  const cats = [...d.byCategory.filter((c) => c.total > 0).slice(0, 12), ...d.hidden.filter((h) => !h.sub).map((h) => ({ ...h, hidden: true }))]
     .sort((a, b) => b.total - a.total);
   const globalMax = Math.max(...cats.filter((c) => !c.hidden).flatMap((c) => months.map((m, i) => d.trend[i].cats[c.category] ?? 0)), 1);
   return (
