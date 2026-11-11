@@ -30,6 +30,9 @@ export function defaultMonth() {
 }
 
 const colorsMap = () => Object.fromEntries(db.prepare("SELECT name, color FROM categories").all().map((c) => [c.name, c.color]));
+/** Cards that have transactions (the 'manual' pseudo-card shows up only once something was added by hand) */
+export const usedCards = () =>
+  db.prepare("SELECT c.last4, c.owner FROM cards c WHERE EXISTS (SELECT 1 FROM transactions t WHERE t.card = c.last4) ORDER BY c.last4").all();
 const owners = () => Object.fromEntries(db.prepare("SELECT last4, owner FROM cards").all().map((c) => [c.last4, c.owner]));
 
 /** Category totals with sub-category breakdown. `compare` maps extra row-sets to keys (prev, avg3). */
@@ -240,7 +243,7 @@ export function dashboard(month, { excludeTrips = false, card = null } = {}) {
       needsReview: db.prepare("SELECT COUNT(*) AS n FROM transactions WHERE needs_review = 1 AND status = 'posted'").get().n,
     },
     byCategory, byCategoryNoTrips: categoryBreakdown(rows.filter((r) => !r.trip_id)), trend, trendTrips, tripsInPeriod, catByCard, tripsCompare, topMerchants, largest, weekday, subscriptions, insights,
-    card, cards: Object.entries(own).map(([last4, owner]) => ({ last4, owner })),
+    card, cards: usedCards(),
   };
 }
 

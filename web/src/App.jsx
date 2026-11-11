@@ -13,7 +13,7 @@ const TABS = [
   { id: "trips", label: "טיולים" },
   { id: "review", label: "לאישור" },
   { id: "transactions", label: "עסקאות" },
-  { id: "import", label: "ייבוא" },
+  { id: "import", label: "הוספה" },
   { id: "settings", label: "הגדרות" },
 ];
 

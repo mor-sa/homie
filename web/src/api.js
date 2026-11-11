@@ -31,6 +31,13 @@ export const api = {
   trips: () => req("/trips"),
   addTrip: (t) => req("/trips", json("POST", t)),
   deleteTrip: (id) => req(`/trips/${id}`, { method: "DELETE" }),
+  recurring: () => req("/recurring"),
+  addRecurring: (r) => req("/recurring", json("POST", r)),
+  updateRecurring: (id, r) => req(`/recurring/${id}`, json("PATCH", r)),
+  deleteRecurring: (id) => req(`/recurring/${id}`, { method: "DELETE" }),
+  manual: () => req("/manual"),
+  addManual: (t) => req("/manual", json("POST", t)),
+  deleteManual: (id) => req(`/manual/${id}`, { method: "DELETE" }),
   setCardOwner: (last4, owner) => req(`/cards/${last4}`, json("PUT", { owner })),
 };
 

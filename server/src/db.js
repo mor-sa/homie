@@ -190,7 +190,9 @@ export function rekeyMerchants(merchantKey) {
   });
 }
 
+// Nested calls join the outer transaction
 export function tx(fn) {
+  if (db.isTransaction) return fn();
   db.exec("BEGIN");
   try {
     const r = fn();

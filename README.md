@@ -37,3 +37,12 @@ For each imported transaction, in order:
 Re-importing is safe. Rows are matched on card + date + amount, so overlapping statements and history don't double count.
 
 Adding another card company (Isracard, Max): add a parser in `server/src/importers/index.js`.
+
+## Expenses outside the card
+
+The "הוספה" tab also takes expenses that never show up in a card file:
+
+- **Recurring** (rent, house committee, standing orders): set once with an amount, category, day of month and start month.
+  A row is added for every month up to today, marked fixed, with card "ללא כרטיס". A new amount can apply from a chosen
+  month so earlier months keep what was paid; stopping keeps the history, deleting removes the months too.
+- **One-off** (bank transfer, cash): a single row. A date inside a trip tags it with that trip.

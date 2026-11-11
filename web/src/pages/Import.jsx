@@ -1,7 +1,19 @@
 import { useState } from "react";
 import { api } from "../api.js";
+import { ManualExpense, Recurring } from "./Manual.jsx";
 
-export default function Import({ onImported, onGo }) {
+// Everything that adds data: card files, recurring expenses outside the card (rent), one-off manual expenses
+export default function Import({ meta, onImported, onGo }) {
+  const [msg, setMsg] = useState(null);
+  const run = async (fn, ok) => {
+    try {
+      const r = await fn();
+      setMsg(typeof ok === "function" ? ok(r) : ok ?? null);
+      await onImported();
+    } catch (e) {
+      setMsg(e.message);
+    }
+  };
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState([]);
   const [drag, setDrag] = useState(false);
@@ -22,6 +34,8 @@ export default function Import({ onImported, onGo }) {
 
   return (
     <div className="grid gap-4">
+      {msg && <p className="card border-series-1/40 p-3 text-sm" role="status">{msg}</p>}
+      <h2 className="text-lg font-semibold">ייבוא מהאשראי</h2>
       <label
         onDragOver={(e) => (e.preventDefault(), setDrag(true))}
         onDragLeave={() => setDrag(false)}
@@ -61,6 +75,10 @@ export default function Import({ onImported, onGo }) {
           )}
         </div>
       ))}
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <Recurring meta={meta} run={run} />
+        <ManualExpense meta={meta} run={run} />
+      </div>
     </div>
   );
 }

@@ -168,7 +168,7 @@ function Cards({ cards, run }) {
     <section className="card grid content-start gap-3 p-4">
       <h2 className="font-semibold">כרטיסים</h2>
       <ul className="grid gap-2">
-        {cards.map((c) => (
+        {cards.filter((c) => c.last4 !== "manual").map((c) => (
           <li key={c.last4} className="flex items-center gap-3 text-sm">
             <span className="num text-muted">•••• {c.last4}</span>
             <input defaultValue={c.owner} className="w-32 rounded-lg border border-grid bg-surface px-2 py-1"

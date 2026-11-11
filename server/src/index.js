@@ -4,8 +4,9 @@ import { db, tx, migrateAbroad, rekeyMerchants } from "./db.js";
 import { merchantKey } from "./normalize.js";
 import { importFile } from "./importService.js";
 import { learnRule, categoryTree, categoryOptions, splitOption, classifyWithAi } from "./classify.js";
-import { dashboard, months, years, tripDashboard, defaultMonth } from "./dashboard.js";
+import { dashboard, months, years, tripDashboard, defaultMonth, usedCards } from "./dashboard.js";
 import { aiEnabled, researchMerchant } from "./ai.js";
+import { materializeRecurring, registerManualRoutes } from "./manual.js";
 
 rekeyMerchants(merchantKey);
 const moved = migrateAbroad();
@@ -30,12 +31,16 @@ const fail = (res, e) => {
 };
 const NO_KEY = "דורש ANTHROPIC_API_KEY בקובץ server/.env";
 
-app.get("/api/meta", wrap(() => ({
+registerManualRoutes(app, wrap);
+materializeRecurring();
+
+// meta is fetched on every page load, which is also when a new month's recurring rows get added
+app.get("/api/meta", wrap(() => (materializeRecurring(), {
   categories: db.prepare("SELECT name, color FROM categories").all().reduce(
     (tree, c) => (tree.find((t) => t.name === c.name).color = c.color, tree),
     categoryTree(),
   ),
-  cards: db.prepare("SELECT * FROM cards").all(),
+  cards: usedCards(),
   months: months(),
   years: years(),
   defaultMonth: defaultMonth(),
