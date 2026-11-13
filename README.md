@@ -46,3 +46,13 @@ The "הוספה" tab also takes expenses that never show up in a card file:
   A row is added for every month up to today, marked fixed, with card "ללא כרטיס". A new amount can apply from a chosen
   month so earlier months keep what was paid; stopping keeps the history, deleting removes the months too.
 - **One-off** (bank transfer, cash): a single row. A date inside a trip tags it with that trip.
+
+## Wishlist
+
+The "וישליסט" tab keeps things we'd like to buy: a photo (click, drop or paste; shrunk to ≤1600px JPEG in the
+browser), a name, the price and link we saw, and a note. Photos are stored in `server/data/wishlist/`, next to
+the database, so they stay out of git.
+
+"חיפוש חכם" sends the photo and name to Claude with web search and web fetch: it identifies the item and
+returns 3–8 offers from stores that sell in Israel, with prices in shekels. Only links whose site came back in
+the actual search results are kept. Needs `ANTHROPIC_API_KEY` in `server/.env`; the list itself works without it.

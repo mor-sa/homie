@@ -6,6 +6,7 @@ import Import from "./pages/Import.jsx";
 import Trips from "./pages/Trips.jsx";
 import Graphs from "./pages/Graphs.jsx";
 import Settings from "./pages/Settings.jsx";
+import Wishlist from "./pages/Wishlist.jsx";
 
 const TABS = [
   { id: "dashboard", label: "סקירה" },
@@ -14,6 +15,7 @@ const TABS = [
   { id: "review", label: "לאישור" },
   { id: "transactions", label: "עסקאות" },
   { id: "import", label: "הוספה" },
+  { id: "wishlist", label: "וישליסט" },
   { id: "settings", label: "הגדרות" },
 ];
 
@@ -80,7 +82,7 @@ export default function App() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-6">
-        {meta.months.length === 0 && !["import", "settings"].includes(tab) ? (
+        {meta.months.length === 0 && !["import", "settings", "wishlist"].includes(tab) ? (
           <div className="card p-8 text-center">
             <p className="mb-4 text-ink-2">עוד אין נתונים. התחילו בייבוא קובץ ההוצאות מגוגל שיטס ואז פירוט עסקאות מחברת האשראי.</p>
             <button onClick={() => go("import")} className="rounded-lg bg-ink px-4 py-2 text-surface">לייבוא</button>
@@ -96,6 +98,8 @@ export default function App() {
         ) : tab === "transactions" ? (
           <Transactions key={period + JSON.stringify(filters)} meta={meta} month={period} filters={filters}
             onFilters={(f) => go("transactions", period, f)} onChanged={refreshMeta} />
+        ) : tab === "wishlist" ? (
+          <Wishlist meta={meta} />
         ) : tab === "import" ? (
           <Import meta={meta} onImported={refreshMeta} onGo={go} />
         ) : (

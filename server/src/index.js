@@ -7,6 +7,7 @@ import { learnRule, categoryTree, categoryOptions, splitOption, classifyWithAi }
 import { dashboard, months, years, tripDashboard, defaultMonth, usedCards } from "./dashboard.js";
 import { aiEnabled, researchMerchant } from "./ai.js";
 import { materializeRecurring, registerManualRoutes } from "./manual.js";
+import { registerWishlistRoutes } from "./wishlist.js";
 
 rekeyMerchants(merchantKey);
 const moved = migrateAbroad();
@@ -32,6 +33,7 @@ const fail = (res, e) => {
 const NO_KEY = "דורש ANTHROPIC_API_KEY בקובץ server/.env";
 
 registerManualRoutes(app, wrap);
+registerWishlistRoutes(app, wrap);
 materializeRecurring();
 
 // meta is fetched on every page load, which is also when a new month's recurring rows get added

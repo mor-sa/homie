@@ -6,6 +6,12 @@ async function req(path, opts = {}) {
 }
 const json = (method, body) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
+const formData = (fields) => {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(fields)) if (v !== undefined) fd.append(k, v ?? "");
+  return fd;
+};
+
 export const api = {
   meta: () => req("/meta"),
   dashboard: (month, trips = "include", card = "", hide = []) =>
@@ -39,6 +45,11 @@ export const api = {
   manual: () => req("/manual"),
   addManual: (t) => req("/manual", json("POST", t)),
   deleteManual: (id) => req(`/manual/${id}`, { method: "DELETE" }),
+  wishlist: () => req("/wishlist"),
+  addWish: (fields) => req("/wishlist", { method: "POST", body: formData(fields) }),
+  updateWish: (id, fields) => req(`/wishlist/${id}`, { method: "PATCH", body: formData(fields) }),
+  deleteWish: (id) => req(`/wishlist/${id}`, { method: "DELETE" }),
+  searchWish: (id) => req(`/wishlist/${id}/search`, { method: "POST" }),
   setCardOwner: (last4, owner) => req(`/cards/${last4}`, json("PUT", { owner })),
 };
 
