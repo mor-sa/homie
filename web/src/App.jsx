@@ -63,7 +63,7 @@ export default function App() {
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 border-b border-grid bg-surface/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-          <h1 className="text-lg font-bold">הוצאות הבית</h1>
+          <h1 className="text-xl font-bold tracking-tight" dir="ltr">Homie</h1>
           <nav className="flex max-w-full gap-1 overflow-x-auto">
             {TABS.map((t) => (
               <button key={t.id} onClick={() => go(t.id)}

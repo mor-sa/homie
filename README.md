@@ -1,6 +1,6 @@
-# הוצאות הבית
+# Homie
 
-A private household-expenses app: import credit card exports, auto-categorize, review, and see insights.
+A private home app: household expenses (import credit card exports, auto-categorize, review, insights) and a wishlist.
 
 ## Run
 
